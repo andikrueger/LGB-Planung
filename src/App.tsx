@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
 
 type TrackKind = 'straight' | 'curve' | 'switch-left' | 'switch-right' | 'switch-three' | 'crossing' | 'buffer' | 'special'
@@ -110,7 +110,7 @@ const MIN_ZOOM = 25
 const MAX_ZOOM = 200
 const ZOOM_STEP = 25
 const MILLIMETERS_TO_UNITS = UNITS_PER_METER / 1000
-const SNAP_DISTANCE = 22
+const SNAP_DISTANCE = 15
 const CONNECTION_EPSILON = 1
 const ROTATION_STEP = 7.5
 
@@ -129,12 +129,12 @@ const getTrackGeometry = (definition: TrackDefinition): TrackGeometry => {
     const angle = definition.angleDeg ?? 0
     const halfAngle = toRadians(angle / 2)
     const x = radius * Math.sin(halfAngle)
-    const rise = radius * (1 - Math.cos(halfAngle))
+    const sagitta = radius * (1 - Math.cos(halfAngle))
     return {
-      paths: [`M ${-x} ${rise / 2} A ${radius} ${radius} 0 0 1 ${x} ${rise / 2}`],
+      paths: [`M ${-x} ${sagitta / 2} A ${radius} ${radius} 0 0 1 ${x} ${sagitta / 2}`],
       connections: [
-        { x: -x, y: rise / 2, angle: 180 - angle / 2 },
-        { x, y: rise / 2, angle: angle / 2 },
+        { x: -x, y: sagitta / 2, angle: 180 - angle / 2 },
+        { x, y: sagitta / 2, angle: angle / 2 },
       ],
     }
   }
@@ -230,11 +230,35 @@ const snapTrack = (track: PlacedTrack, tracks: PlacedTrack[]) => {
   return best ? alignConnection(track, best.source, best.target) : track
 }
 
-const getConnectedIndexes = (track: PlacedTrack, tracks: PlacedTrack[]) => {
-  const otherConnections = tracks.filter((item) => item.id !== track.id).flatMap(getWorldConnections)
-  return new Set(getWorldConnections(track)
-    .filter((connection) => otherConnections.some((other) => distance(connection, other) < CONNECTION_EPSILON))
-    .map((connection) => connection.index))
+const getConnectedIndexes = (tracks: PlacedTrack[]) => {
+  const result = new Map<string, Set<number>>()
+  const buckets = new Map<string, ReturnType<typeof getWorldConnections>>()
+  const connections = tracks.flatMap(getWorldConnections)
+  const bucketCoordinate = (value: number) => Math.floor(value / CONNECTION_EPSILON)
+  const bucketKey = (x: number, y: number) => `${x}:${y}`
+
+  connections.forEach((connection) => {
+    result.set(connection.trackId, result.get(connection.trackId) ?? new Set())
+    const x = bucketCoordinate(connection.x)
+    const y = bucketCoordinate(connection.y)
+    const key = bucketKey(x, y)
+    buckets.set(key, [...(buckets.get(key) ?? []), connection])
+  })
+
+  connections.forEach((connection) => {
+    const x = bucketCoordinate(connection.x)
+    const y = bucketCoordinate(connection.y)
+    for (let offsetX = -1; offsetX <= 1; offsetX += 1) {
+      for (let offsetY = -1; offsetY <= 1; offsetY += 1) {
+        const nearby = buckets.get(bucketKey(x + offsetX, y + offsetY)) ?? []
+        if (nearby.some((other) => other.trackId !== connection.trackId && distance(connection, other) < CONNECTION_EPSILON)) {
+          result.get(connection.trackId)?.add(connection.index)
+        }
+      }
+    }
+  })
+
+  return result
 }
 
 const normalizeCanvasSize = (value: unknown): CanvasSize => {
@@ -273,9 +297,9 @@ function TrackShape({ track, selected, preview = false, connected = new Set<numb
 
   return (
     <g transform={transform} className="track-shape">
-      {selected && geometry.paths.map((path) => <path key={`selection-${path}`} d={path} className="selection-ring" />)}
-      {geometry.paths.map((path) => (
-        <g key={path}>
+      {selected && geometry.paths.map((path, index) => <path key={`selection-${index}`} d={path} className="selection-ring" />)}
+      {geometry.paths.map((path, index) => (
+        <g key={index}>
           <path d={path} className="track-sleepers" />
           <path d={path} className="track-rails" style={{ stroke: rail }} />
           <path d={path} className="track-gauge" />
@@ -325,6 +349,7 @@ function App() {
   const roomHeight = Math.max(0, canvasHeight - 90)
   const roomDoorWidth = Math.min(135, roomWidth * .25)
   const roomDoorDepth = Math.min(100, roomHeight * .25)
+  const connectedIndexes = useMemo(() => getConnectedIndexes(tracks), [tracks])
 
   useEffect(() => {
     localStorage.setItem('lgb-tracks', JSON.stringify(tracks))
@@ -562,7 +587,7 @@ function App() {
               <rect width={canvasWidth} height={canvasHeight} fill="url(#largeGrid)" className="grid" />
               {tracks.map((track) => (
                 <g key={track.id} data-track="" onPointerDown={(event) => startDrag(event, track)} className={`placed-track ${track.trackClass}`}>
-                  <TrackShape track={track} selected={selectedId === track.id} connected={getConnectedIndexes(track, tracks)} />
+                  <TrackShape track={track} selected={selectedId === track.id} connected={connectedIndexes.get(track.id)} />
                 </g>
               ))}
               {tracks.length === 0 && terrain.length === 0 && (
