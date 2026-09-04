@@ -199,7 +199,9 @@ function App() {
     const link = document.createElement('a')
     link.href = url
     link.download = `${projectName.replace(/[^a-z0-9äöüß]+/gi, '-').toLowerCase()}.lgb.json`
+    document.body.appendChild(link)
     link.click()
+    link.remove()
     URL.revokeObjectURL(url)
   }
 
@@ -346,7 +348,7 @@ function App() {
           {selected && (
             <div className="selection-panel">
               <div><small>Auswahl</small><strong>{TRACKS.find((item) => item.id === selected.definitionId)?.name}</strong></div>
-              <button onClick={() => updateSelected({ rotation: (selected.rotation - 15) % 360 })}>↶ <span>Drehen</span></button>
+              <button onClick={() => updateSelected({ rotation: ((selected.rotation - 15) % 360 + 360) % 360 })}>↶ <span>Drehen</span></button>
               <button onClick={() => updateSelected({ rotation: (selected.rotation + 15) % 360 })}>↷ <span>Drehen</span></button>
               <label><span>Stromkreis</span><select value={selected.circuit} onChange={(event) => updateSelected({ circuit: event.target.value })}>{CIRCUITS.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
               <label><span>Kennzeichnung</span><select value={selected.trackClass} onChange={(event) => updateSelected({ trackClass: event.target.value as TrackClass })}><option value="main">Hauptstrecke</option><option value="siding">Abstellgleis</option><option value="station">Bahnhofsgleis</option></select></label>
