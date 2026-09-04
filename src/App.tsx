@@ -111,7 +111,7 @@ const MAX_ZOOM = 200
 const ZOOM_STEP = 25
 const MILLIMETERS_TO_UNITS = UNITS_PER_METER / 1000
 const SNAP_DISTANCE = 15
-const CONNECTION_EPSILON = 1
+const CONNECTION_TOLERANCE_UNITS = 1
 const ROTATION_STEP = 7.5
 
 const uid = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`
@@ -197,10 +197,10 @@ const getWorldConnections = (track: PlacedTrack) => {
 
 const distance = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.hypot(a.x - b.x, a.y - b.y)
 
-const getOpenConnections = (tracks: PlacedTrack[], excludedId?: string) => {
-  const connections = tracks.filter((track) => track.id !== excludedId).flatMap(getWorldConnections)
+const getOpenConnections = (otherTracks: PlacedTrack[], excludedId?: string) => {
+  const connections = otherTracks.filter((track) => track.id !== excludedId).flatMap(getWorldConnections)
   const buckets = new Map<string, typeof connections>()
-  const coordinate = (value: number) => Math.floor(value / CONNECTION_EPSILON)
+  const coordinate = (value: number) => Math.floor(value / CONNECTION_TOLERANCE_UNITS)
   const key = (x: number, y: number) => `${x}:${y}`
   connections.forEach((connection) => {
     const bucketKey = key(coordinate(connection.x), coordinate(connection.y))
@@ -212,7 +212,7 @@ const getOpenConnections = (tracks: PlacedTrack[], excludedId?: string) => {
     for (let offsetX = -1; offsetX <= 1; offsetX += 1) {
       for (let offsetY = -1; offsetY <= 1; offsetY += 1) {
         const nearby = buckets.get(key(x + offsetX, y + offsetY)) ?? []
-        if (nearby.some((other) => other.trackId !== connection.trackId && distance(connection, other) < CONNECTION_EPSILON)) return false
+        if (nearby.some((other) => other.trackId !== connection.trackId && distance(connection, other) < CONNECTION_TOLERANCE_UNITS)) return false
       }
     }
     return true
@@ -225,11 +225,11 @@ const alignConnection = (track: PlacedTrack, source: TrackConnection, target: Tr
   return { ...track, x: target.x - rotated.x, y: target.y - rotated.y, rotation }
 }
 
-const snapTrack = (track: PlacedTrack, tracks: PlacedTrack[]) => {
+const snapTrack = (track: PlacedTrack, otherTracks: PlacedTrack[]) => {
   const definition = TRACKS.find((item) => item.id === track.definitionId) ?? TRACKS[0]
   const geometry = getTrackGeometry(definition)
   const worldConnections = getWorldConnections(track)
-  const targets = getOpenConnections(tracks, track.id)
+  const targets = getOpenConnections(otherTracks, track.id)
   let best: { source: TrackConnection; target: TrackConnection; distance: number } | null = null
 
   for (const [index, world] of worldConnections.entries()) {
@@ -248,7 +248,7 @@ const getConnectedIndexes = (tracks: PlacedTrack[]) => {
   const result = new Map<string, Set<number>>()
   const buckets = new Map<string, ReturnType<typeof getWorldConnections>>()
   const connections = tracks.flatMap(getWorldConnections)
-  const bucketCoordinate = (value: number) => Math.floor(value / CONNECTION_EPSILON)
+  const bucketCoordinate = (value: number) => Math.floor(value / CONNECTION_TOLERANCE_UNITS)
   const bucketKey = (x: number, y: number) => `${x}:${y}`
 
   connections.forEach((connection) => {
@@ -265,7 +265,7 @@ const getConnectedIndexes = (tracks: PlacedTrack[]) => {
     for (let offsetX = -1; offsetX <= 1; offsetX += 1) {
       for (let offsetY = -1; offsetY <= 1; offsetY += 1) {
         const nearby = buckets.get(bucketKey(x + offsetX, y + offsetY)) ?? []
-        if (nearby.some((other) => other.trackId !== connection.trackId && distance(connection, other) < CONNECTION_EPSILON)) {
+        if (nearby.some((other) => other.trackId !== connection.trackId && distance(connection, other) < CONNECTION_TOLERANCE_UNITS)) {
           result.get(connection.trackId)?.add(connection.index)
         }
       }
@@ -392,7 +392,15 @@ function App() {
         .map((connection) => ({ connection, gap: distance(point, connection) }))
         .filter(({ gap }) => gap <= SNAP_DISTANCE)
         .sort((a, b) => a.gap - b.gap)[0]?.connection
-      if (target) item = alignConnection(item, getTrackGeometry(definition).connections[0], target)
+      if (target) {
+        const source = getTrackGeometry(definition).connections
+          .map((connection) => {
+            const rotated = rotatePoint(connection, item.rotation)
+            return { connection, gap: distance({ x: item.x + rotated.x, y: item.y + rotated.y }, target) }
+          })
+          .sort((a, b) => a.gap - b.gap)[0].connection
+        item = alignConnection(item, source, target)
+      }
       setTracks((items) => [...items, item])
       setSelectedId(item.id)
     }
