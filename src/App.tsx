@@ -193,6 +193,8 @@ function App() {
   const canvasHeight = canvasSize.heightMeters * UNITS_PER_METER
   const roomWidth = Math.max(0, canvasWidth - 90)
   const roomHeight = Math.max(0, canvasHeight - 90)
+  const roomDoorWidth = Math.min(135, roomWidth * .25)
+  const roomDoorDepth = Math.min(100, roomHeight * .25)
 
   useEffect(() => {
     localStorage.setItem('lgb-tracks', JSON.stringify(tracks))
@@ -404,7 +406,7 @@ function App() {
               {environment === 'indoor' && (
                 <g className="room-outline">
                   <rect x="45" y="45" width={roomWidth} height={roomHeight} rx="6" />
-                  <path d={`M ${45 + Math.min(135, roomWidth)} 45 v${Math.min(100, roomHeight)} h${-Math.min(135, roomWidth)} M ${canvasWidth - 45 - Math.min(185, roomWidth)} ${canvasHeight - 45} v${-Math.min(115, roomHeight)} h${Math.min(185, roomWidth)}`} />
+                  <path d={`M ${45 + roomDoorWidth} 45 v${roomDoorDepth} h${-roomDoorWidth} M ${canvasWidth - 45 - roomDoorWidth} ${canvasHeight - 45} v${-roomDoorDepth} h${roomDoorWidth}`} />
                 </g>
               )}
               {terrain.map((patch) => (
