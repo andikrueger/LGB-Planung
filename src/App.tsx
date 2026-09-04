@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import './App.css'
 
-type TrackKind = 'straight' | 'curve' | 'switch-left' | 'switch-right' | 'crossing' | 'buffer' | 'special'
+type TrackKind = 'straight' | 'curve' | 'switch-left' | 'switch-right' | 'switch-three' | 'crossing' | 'buffer' | 'special'
 type TrackClass = 'main' | 'siding' | 'station'
 type TerrainKind = 'grass' | 'earth' | 'water' | 'hill' | 'building'
 
@@ -32,22 +32,49 @@ type TerrainPatch = {
 }
 
 const TRACKS: TrackDefinition[] = [
-  { id: 'g1200', article: '10610', name: 'Gerades Gleis', detail: '1.200 mm', kind: 'straight', size: 180 },
-  { id: 'g600', article: '10600', name: 'Gerades Gleis', detail: '600 mm', kind: 'straight', size: 120 },
-  { id: 'g300', article: '10300', name: 'Gerades Gleis', detail: '300 mm', kind: 'straight', size: 80 },
+  { id: 'g41', article: '10040', name: 'Gerades Gleis', detail: '41 mm', kind: 'straight', size: 38 },
+  { id: 'g52', article: '10050', name: 'Gerades Gleis', detail: '52 mm', kind: 'straight', size: 42 },
+  { id: 'g75', article: '10070', name: 'Gerades Gleis', detail: '75 mm', kind: 'straight', size: 46 },
+  { id: 'g82', article: '10080', name: 'Gerades Gleis', detail: '82 mm', kind: 'straight', size: 48 },
+  { id: 'g-adjustable', article: '10090', name: 'Verstellbares Gleis', detail: '88–120 mm', kind: 'special', size: 54 },
   { id: 'g150', article: '10150', name: 'Gerades Gleis', detail: '150 mm', kind: 'straight', size: 58 },
+  { id: 'g300', article: '10000', name: 'Gerades Gleis', detail: '300 mm', kind: 'straight', size: 80 },
+  { id: 'g600', article: '10600', name: 'Gerades Gleis', detail: '600 mm', kind: 'straight', size: 120 },
+  { id: 'g1200', article: '10610', name: 'Gerades Gleis', detail: '1.200 mm', kind: 'straight', size: 180 },
+  { id: 'r1-7-5', article: '11040', name: 'Kurve R1', detail: '7,5° · R 600 mm', kind: 'curve', size: 48 },
+  { id: 'r1-15', article: '11020', name: 'Kurve R1', detail: '15° · R 600 mm', kind: 'curve', size: 68 },
   { id: 'r1', article: '11000', name: 'Kurve R1', detail: '30° · R 600 mm', kind: 'curve', size: 88 },
   { id: 'r2', article: '15000', name: 'Kurve R2', detail: '30° · R 780 mm', kind: 'curve', size: 100 },
-  { id: 'r3', article: '16000', name: 'Kurve R3', detail: '22,5° · R 1.198 mm', kind: 'curve', size: 112 },
+  { id: 'r3', article: '16000', name: 'Kurve R3', detail: '22,5° · R 1.195 mm', kind: 'curve', size: 112 },
+  { id: 'r5-7-5', article: '18020', name: 'Kurve R5', detail: '7,5° · R 2.320 mm', kind: 'curve', size: 92 },
   { id: 'r5', article: '18000', name: 'Kurve R5', detail: '15° · R 2.320 mm', kind: 'curve', size: 126 },
-  { id: 'wl-r1', article: '12000', name: 'Weiche links R1', detail: '30°', kind: 'switch-left', size: 116 },
-  { id: 'wr-r1', article: '12100', name: 'Weiche rechts R1', detail: '30°', kind: 'switch-right', size: 116 },
-  { id: 'wl-r3', article: '16040', name: 'Weiche links R3', detail: '22,5°', kind: 'switch-left', size: 138 },
-  { id: 'wr-r3', article: '16140', name: 'Weiche rechts R3', detail: '22,5°', kind: 'switch-right', size: 138 },
-  { id: 'cross', article: '13000', name: 'Kreuzung', detail: '30°', kind: 'crossing', size: 105 },
-  { id: 'double-slip', article: '12260', name: 'Doppelkreuzungsweiche', detail: 'R1 · 30°', kind: 'crossing', size: 118 },
-  { id: 'buffer', article: '10310', name: 'Prellbockgleis', detail: '300 mm', kind: 'buffer', size: 80 },
-  { id: 'uncoupler', article: '10560', name: 'Entkupplungsgleis', detail: '150 mm', kind: 'special', size: 62 },
+  { id: 'wr-r1', article: '12000', name: 'Handweiche rechts R1', detail: '30° · 300 mm', kind: 'switch-right', size: 116 },
+  { id: 'wr-r1-electric', article: '12050', name: 'Elektroweiche rechts R1', detail: '30° · 300 mm', kind: 'switch-right', size: 116 },
+  { id: 'wl-r1', article: '12100', name: 'Handweiche links R1', detail: '30° · 300 mm', kind: 'switch-left', size: 116 },
+  { id: 'wl-r1-electric', article: '12150', name: 'Elektroweiche links R1', detail: '30° · 300 mm', kind: 'switch-left', size: 116 },
+  { id: 'wr-r3', article: '16040', name: 'Handweiche rechts R3', detail: '22,5° · R 1.195 mm', kind: 'switch-right', size: 138 },
+  { id: 'wr-r3-electric', article: '16050', name: 'Elektroweiche rechts R3', detail: '22,5° · R 1.195 mm', kind: 'switch-right', size: 138 },
+  { id: 'wl-r3', article: '16140', name: 'Handweiche links R3', detail: '22,5° · R 1.195 mm', kind: 'switch-left', size: 138 },
+  { id: 'wl-r3-electric', article: '16150', name: 'Elektroweiche links R3', detail: '22,5° · R 1.195 mm', kind: 'switch-left', size: 138 },
+  { id: 'wr-r5-manual', article: '18050', name: 'Handweiche rechts R5', detail: '15° · 600 mm', kind: 'switch-right', size: 166 },
+  { id: 'wl-r5-manual', article: '18150', name: 'Handweiche links R5', detail: '15° · 600 mm', kind: 'switch-left', size: 166 },
+  { id: 'double-slip', article: '12260', name: 'Doppelkreuzungsweiche', detail: 'R2 · 22,5° · 375 mm', kind: 'crossing', size: 138 },
+  { id: 'three-way', article: '12360', name: 'Dreiwegeweiche', detail: 'R1 · 30° · 375 mm', kind: 'switch-three', size: 138 },
+  { id: 'cross', article: '13000', name: 'Kreuzung R1', detail: '30°', kind: 'crossing', size: 105 },
+  { id: 'cross-90', article: '13100', name: 'Kreuzung', detail: '90°', kind: 'crossing', size: 92 },
+  { id: 'cross-r3', article: '13200', name: 'Kreuzung R3', detail: '22,5° · 375 mm', kind: 'crossing', size: 138 },
+  { id: 'reverse-loop', article: '10151', name: 'Kehrschleifengleis-Set', detail: '2 × 150 mm · analog', kind: 'special', size: 62 },
+  { id: 'isolation-double', article: '10152', name: 'Trenngleis, zweipolig', detail: '150 mm', kind: 'special', size: 62 },
+  { id: 'isolation-single', article: '10153', name: 'Trenngleis, einpolig', detail: '150 mm', kind: 'special', size: 62 },
+  { id: 'uncoupler-manual', article: '10520', name: 'Entkupplungsgleis manuell', detail: '150 mm', kind: 'special', size: 62 },
+  { id: 'uncoupler', article: '10560', name: 'Entkupplungsgleis elektrisch', detail: '150 mm', kind: 'special', size: 62 },
+  { id: 'flex', article: '10005', name: 'Flexgleis-Schiene', detail: '1.500 mm · individuell biegbar', kind: 'special', size: 200 },
+  { id: 'rack', article: '10210', name: 'Zahnstange', detail: '300 mm · Zahnradbahn', kind: 'special', size: 80 },
+  { id: 'road-crossing', article: '10007', name: 'Straßenüberfahrt', detail: '300 mm', kind: 'special', size: 80 },
+  { id: 'buffer', article: '10310', name: 'Prellbock beleuchtet', detail: 'Modern', kind: 'buffer', size: 58 },
+  { id: 'buffer-standard', article: '10315', name: 'Prellbock', detail: 'Standard', kind: 'buffer', size: 58 },
+  { id: 'buffer-rhb', article: '10316', name: 'Prellbock RhB', detail: 'Epoche VI', kind: 'buffer', size: 58 },
+  { id: 'buffer-old', article: '10320', name: 'Prellbock Old Timer', detail: 'Gebogene Schienen', kind: 'buffer', size: 58 },
 ]
 
 const CIRCUITS = [
@@ -97,6 +124,13 @@ function TrackShape({ track, selected }: { track: PlacedTrack; selected: boolean
           <path d={`M ${-length / 2} -20 L ${length / 2} 20 M ${-length / 2} 20 L ${length / 2} -20`} {...sleeper} />
           <path d={`M ${-length / 2} -27 L ${length / 2} 13 M ${-length / 2} -13 L ${length / 2} 27 M ${-length / 2} 13 L ${length / 2} -27 M ${-length / 2} 27 L ${length / 2} -13`} {...common} />
         </>
+      ) : definition.kind === 'switch-three' ? (
+        <>
+          <path d={`M ${-length / 2} 0 L ${length / 2} 0 M -10 0 Q 35 -42 ${length / 2} -38 M -10 0 Q 35 42 ${length / 2} 38`} {...sleeper} />
+          <path d={`M ${-length / 2} -7 L ${length / 2} -7 M ${-length / 2} 7 L ${length / 2} 7`} {...common} />
+          <path d={`M -12 -5 Q 32 -48 ${length / 2} -45 M -7 7 Q 38 -35 ${length / 2} -31`} {...common} />
+          <path d={`M -12 5 Q 32 48 ${length / 2} 45 M -7 -7 Q 38 35 ${length / 2} 31`} {...common} />
+        </>
       ) : (
         <>
           <path d={`M ${-length / 2} 0 L ${length / 2} 0 M -10 0 Q 35 ${definition.kind === 'switch-left' ? -42 : 42} ${length / 2} ${definition.kind === 'switch-left' ? -38 : 38}`} {...sleeper} />
@@ -127,6 +161,7 @@ function App() {
   const [activeCircuit, setActiveCircuit] = useState('A')
   const [trackClass, setTrackClass] = useState<TrackClass>('main')
   const [catalogFilter, setCatalogFilter] = useState<'all' | 'track' | 'switch' | 'special'>('all')
+  const [catalogSearch, setCatalogSearch] = useState('')
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [projectName, setProjectName] = useState('Meine Gartenbahn')
   const dragRef = useRef<{ id: string; dx: number; dy: number } | null>(null)
@@ -181,9 +216,13 @@ function App() {
   const selected = tracks.find((item) => item.id === selectedId)
   const filteredTracks = TRACKS.filter((item) => {
     if (catalogFilter === 'track') return item.kind === 'straight' || item.kind === 'curve'
-    if (catalogFilter === 'switch') return item.kind.includes('switch')
-    if (catalogFilter === 'special') return ['crossing', 'buffer', 'special'].includes(item.kind)
-    return true
+    const matchesCategory =
+      catalogFilter === 'track' ? item.kind === 'straight' || item.kind === 'curve'
+        : catalogFilter === 'switch' ? item.kind.includes('switch')
+          : catalogFilter === 'special' ? ['crossing', 'buffer', 'special'].includes(item.kind)
+            : true
+    const query = catalogSearch.trim().toLocaleLowerCase('de')
+    return matchesCategory && (!query || `${item.article} ${item.name} ${item.detail}`.toLocaleLowerCase('de').includes(query))
   })
 
   const resetProject = () => {
@@ -257,6 +296,10 @@ function App() {
               </button>
             ))}
           </div>
+          <label className="catalog-search">
+            <span aria-hidden="true">⌕</span>
+            <input value={catalogSearch} onChange={(event) => setCatalogSearch(event.target.value)} placeholder={`${TRACKS.length} Gleisartikel durchsuchen`} aria-label="Gleiskatalog durchsuchen" />
+          </label>
           <div className="track-list">
             {filteredTracks.map((item) => (
               <button key={item.id} className={`catalog-card ${activeTrack === item.id && !terrainBrush ? 'active' : ''}`} onClick={() => { setActiveTrack(item.id); setTerrainBrush(null); if (window.innerWidth <= 900) setSidebarOpen(false) }}>

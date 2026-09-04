@@ -4,7 +4,8 @@ Eine touch-optimierte Webanwendung zur groben Planung von Lehmann-Gartenbahn-Anl
 
 ## Funktionen
 
-- LGB-Gleiskatalog mit Geraden, Radien, Weichen und Sondergleisen
+- Vollständiger aktueller LGB-Gleiskatalog mit Geraden, R1/R2/R3/R5-Radien,
+  Hand- und Elektroweichen, Kreuzungen, Funktionsgleisen und Prellböcken
 - Platzieren und Verschieben per Maus oder Touch
 - Drehung, Stromkreis- und Gleiskennzeichnung pro Element
 - Indoor- und Outdoor-Planungsmodus
@@ -13,6 +14,13 @@ Eine touch-optimierte Webanwendung zur groben Planung von Lehmann-Gartenbahn-Anl
 
 Die Plandaten bleiben ausschließlich im `localStorage` des jeweiligen Browsers.
 Es werden keine Projektdaten an einen Server übertragen.
+
+Die Gleisdaten basieren auf der
+[offiziellen LGB-Gleissystemübersicht](https://www.lgb.com/fileadmin/media/lgb/produkte/produktinformationen/LGB_Gleissystem-Info.pdf)
+und der [LGB-Produktdatenbank](https://www.lgb.com/service/product-database)
+(Stand September 2026). Zubehör ohne eigene planbare Gleisgeometrie, etwa
+Schienenverbinder, Schwellenbänder und Weichenantriebe, ist nicht Bestandteil
+der Planfläche.
 
 ## Entwicklung
 
