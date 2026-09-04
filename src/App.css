@@ -80,6 +80,9 @@ select { border: 1px solid #d8d9d3; border-radius: 7px; background: white; paddi
 .track-shape { cursor: grab; }
 .track-shape:active { cursor: grabbing; }
 .selection-ring { fill: #fff8; stroke: #e65b37; stroke-width: 3; stroke-dasharray: 7 5; }
+.track-badge { pointer-events: none; }
+.track-badge text { fill: white; font-size: 10px; font-weight: 700; }
+.track-preview .track-badge { display: none; }
 .placed-track.siding { filter: drop-shadow(0 0 4px #fff); }
 .placed-track.siding::after { content: ''; }
 .placed-track.station { filter: drop-shadow(0 0 5px #f4c557); }

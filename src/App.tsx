@@ -105,6 +105,10 @@ function TrackShape({ track, selected }: { track: PlacedTrack; selected: boolean
           <path d={`M -7 7 Q 38 ${definition.kind === 'switch-left' ? -35 : 48} ${length / 2} ${definition.kind === 'switch-left' ? -31 : 45}`} {...common} />
         </>
       )}
+      <g className="track-badge" transform={`translate(0 34) rotate(${-track.rotation})`}>
+        <rect x="-16" y="-10" width="32" height="20" rx="10" fill={rail} />
+        <text textAnchor="middle" dominantBaseline="central">{track.trackClass === 'siding' ? 'AG' : track.trackClass === 'station' ? 'Bf' : track.circuit}</text>
+      </g>
     </g>
   )
 }
@@ -253,7 +257,7 @@ function App() {
           </div>
           <div className="track-list">
             {filteredTracks.map((item) => (
-              <button key={item.id} className={`catalog-card ${activeTrack === item.id && !terrainBrush ? 'active' : ''}`} onClick={() => { setActiveTrack(item.id); setTerrainBrush(null) }}>
+              <button key={item.id} className={`catalog-card ${activeTrack === item.id && !terrainBrush ? 'active' : ''}`} onClick={() => { setActiveTrack(item.id); setTerrainBrush(null); if (window.innerWidth <= 900) setSidebarOpen(false) }}>
                 <span className={`track-preview ${item.kind}`} aria-hidden="true">
                   <svg viewBox="0 0 100 56"><TrackShape track={{ id: '', definitionId: item.id, x: 50, y: 28, rotation: 0, circuit: 'A', trackClass: 'main' }} selected={false} /></svg>
                 </span>
