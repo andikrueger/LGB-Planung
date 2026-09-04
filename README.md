@@ -9,6 +9,8 @@ Eine touch-optimierte Webanwendung zur groben Planung von Lehmann-Gartenbahn-Anl
 - Platzieren und Verschieben per Maus oder Touch
 - Drehung, Stromkreis- und Gleiskennzeichnung pro Element
 - Indoor- und Outdoor-Planungsmodus
+- Frei einstellbare Planfläche mit exakten Breiten- und Höhenangaben in Metern
+- Zoom von 25 % bis 200 % mit verschiebbarer Planfläche
 - Grobmodellierung mit Wiese, Erde, Wasser, Hügeln und Gebäuden
 - Automatische lokale Speicherung sowie JSON-Import und -Export
 

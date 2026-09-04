@@ -92,7 +92,28 @@ const TERRAIN: { id: TerrainKind; label: string; icon: string }[] = [
   { id: 'building', label: 'Gebäude', icon: '▣' },
 ]
 
+const UNITS_PER_METER = 150
+const DEFAULT_CANVAS = { widthMeters: 8, heightMeters: 5 }
+const MIN_CANVAS_METERS = 1
+const MAX_CANVAS_METERS = 100
+const MIN_ZOOM = 25
+const MAX_ZOOM = 200
+const ZOOM_STEP = 25
+
 const uid = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`
+const clamp = (value: number, minimum: number, maximum: number) => Math.min(maximum, Math.max(minimum, value))
+
+const loadCanvasSize = () => {
+  try {
+    const saved = JSON.parse(localStorage.getItem('lgb-canvas') || '{}')
+    return {
+      widthMeters: clamp(Number(saved.widthMeters) || DEFAULT_CANVAS.widthMeters, MIN_CANVAS_METERS, MAX_CANVAS_METERS),
+      heightMeters: clamp(Number(saved.heightMeters) || DEFAULT_CANVAS.heightMeters, MIN_CANVAS_METERS, MAX_CANVAS_METERS),
+    }
+  } catch {
+    return DEFAULT_CANVAS
+  }
+}
 
 function TrackShape({ track, selected }: { track: PlacedTrack; selected: boolean }) {
   const definition = TRACKS.find((item) => item.id === track.definitionId) ?? TRACKS[0]
@@ -164,17 +185,25 @@ function App() {
   const [catalogSearch, setCatalogSearch] = useState('')
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [projectName, setProjectName] = useState('Meine Gartenbahn')
+  const [canvasSize, setCanvasSize] = useState(loadCanvasSize)
+  const [zoom, setZoom] = useState(100)
   const dragRef = useRef<{ id: string; dx: number; dy: number } | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+  const canvasWidth = canvasSize.widthMeters * UNITS_PER_METER
+  const canvasHeight = canvasSize.heightMeters * UNITS_PER_METER
 
   useEffect(() => {
     localStorage.setItem('lgb-tracks', JSON.stringify(tracks))
     localStorage.setItem('lgb-terrain', JSON.stringify(terrain))
   }, [tracks, terrain])
 
+  useEffect(() => {
+    localStorage.setItem('lgb-canvas', JSON.stringify(canvasSize))
+  }, [canvasSize])
+
   const canvasPoint = (event: React.PointerEvent<SVGSVGElement>) => {
     const rect = event.currentTarget.getBoundingClientRect()
-    return { x: ((event.clientX - rect.left) / rect.width) * 1200, y: ((event.clientY - rect.top) / rect.height) * 750 }
+    return { x: ((event.clientX - rect.left) / rect.width) * canvasWidth, y: ((event.clientY - rect.top) / rect.height) * canvasHeight }
   }
 
   const handleCanvasDown = (event: React.PointerEvent<SVGSVGElement>) => {
@@ -195,8 +224,8 @@ function App() {
     const svg = event.currentTarget.ownerSVGElement
     if (!svg) return
     const rect = svg.getBoundingClientRect()
-    const x = ((event.clientX - rect.left) / rect.width) * 1200
-    const y = ((event.clientY - rect.top) / rect.height) * 750
+    const x = ((event.clientX - rect.left) / rect.width) * canvasWidth
+    const y = ((event.clientY - rect.top) / rect.height) * canvasHeight
     dragRef.current = { id: track.id, dx: x - track.x, dy: y - track.y }
     event.currentTarget.setPointerCapture(event.pointerId)
     setSelectedId(track.id)
@@ -232,7 +261,7 @@ function App() {
   }
 
   const exportProject = () => {
-    const blob = new Blob([JSON.stringify({ version: 1, projectName, environment, tracks, terrain }, null, 2)], { type: 'application/json' })
+    const blob = new Blob([JSON.stringify({ version: 2, projectName, environment, canvas: canvasSize, tracks, terrain }, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
@@ -255,6 +284,12 @@ function App() {
         setTerrain(data.terrain)
         setProjectName(data.projectName || 'Importierter Plan')
         setEnvironment(data.environment === 'indoor' ? 'indoor' : 'outdoor')
+        if (data.canvas) {
+          setCanvasSize({
+            widthMeters: clamp(Number(data.canvas.widthMeters) || DEFAULT_CANVAS.widthMeters, MIN_CANVAS_METERS, MAX_CANVAS_METERS),
+            heightMeters: clamp(Number(data.canvas.heightMeters) || DEFAULT_CANVAS.heightMeters, MIN_CANVAS_METERS, MAX_CANVAS_METERS),
+          })
+        }
       } catch {
         window.alert('Diese Datei ist kein gültiger LGB-Plan.')
       }
@@ -321,23 +356,37 @@ function App() {
               <button className={environment === 'indoor' ? 'active' : ''} onClick={() => setEnvironment('indoor')}>⌂ Indoor</button>
             </div>
             <div className="toolbar-divider" />
-            <label>Stromkreis
+            <label className="track-setting">Stromkreis
               <select value={activeCircuit} onChange={(event) => setActiveCircuit(event.target.value)}>
                 {CIRCUITS.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
               </select>
             </label>
-            <label>Gleistyp
+            <label className="track-setting">Gleistyp
               <select value={trackClass} onChange={(event) => setTrackClass(event.target.value as TrackClass)}>
                 <option value="main">Hauptstrecke</option><option value="siding">Abstellgleis</option><option value="station">Bahnhofsgleis</option>
               </select>
             </label>
+            <div className="toolbar-divider" />
+            <label className="dimension-control">Breite
+              <span><input type="number" min={MIN_CANVAS_METERS} max={MAX_CANVAS_METERS} step="0.1" value={canvasSize.widthMeters} onChange={(event) => setCanvasSize((size) => ({ ...size, widthMeters: clamp(Number(event.target.value) || MIN_CANVAS_METERS, MIN_CANVAS_METERS, MAX_CANVAS_METERS) }))} aria-label="Planbreite in Metern" /> m</span>
+            </label>
+            <label className="dimension-control">Höhe
+              <span><input type="number" min={MIN_CANVAS_METERS} max={MAX_CANVAS_METERS} step="0.1" value={canvasSize.heightMeters} onChange={(event) => setCanvasSize((size) => ({ ...size, heightMeters: clamp(Number(event.target.value) || MIN_CANVAS_METERS, MIN_CANVAS_METERS, MAX_CANVAS_METERS) }))} aria-label="Planhöhe in Metern" /> m</span>
+            </label>
+            <div className="zoom-control" aria-label="Zoom">
+              <button type="button" onClick={() => setZoom((value) => clamp(value - ZOOM_STEP, MIN_ZOOM, MAX_ZOOM))} disabled={zoom === MIN_ZOOM} aria-label="Verkleinern">−</button>
+              <button type="button" className="zoom-value" onClick={() => setZoom(100)} title="Auf 100 % zurücksetzen">{zoom}%</button>
+              <button type="button" onClick={() => setZoom((value) => clamp(value + ZOOM_STEP, MIN_ZOOM, MAX_ZOOM))} disabled={zoom === MAX_ZOOM} aria-label="Vergrößern">＋</button>
+            </div>
           </div>
 
           <div className="canvas-wrap">
             <svg
               className={`layout-canvas ${environment}`}
-              viewBox="0 0 1200 750"
-              preserveAspectRatio="none"
+              viewBox={`0 0 ${canvasWidth} ${canvasHeight}`}
+              width={canvasWidth * zoom / 100}
+              height={canvasHeight * zoom / 100}
+              preserveAspectRatio="xMinYMin meet"
               onPointerDown={handleCanvasDown}
               onPointerMove={moveDrag}
               onPointerUp={() => { dragRef.current = null }}
@@ -349,29 +398,29 @@ function App() {
                 <pattern id="largeGrid" width="150" height="150" patternUnits="userSpaceOnUse"><rect width="150" height="150" fill="url(#smallGrid)" /><path d="M 150 0 L 0 0 0 150" fill="none" stroke="currentColor" strokeWidth="1.5" /></pattern>
                 <filter id="patchShadow"><feDropShadow dx="0" dy="3" stdDeviation="5" floodOpacity=".15" /></filter>
               </defs>
-              <rect width="1200" height="750" className="canvas-ground" />
-              {environment === 'indoor' && <g className="room-outline"><rect x="45" y="45" width="1110" height="660" rx="6" /><path d="M 180 45 v100 h-135 M 970 705 v-115 h185" /></g>}
+              <rect width={canvasWidth} height={canvasHeight} className="canvas-ground" />
+              {environment === 'indoor' && <g className="room-outline"><rect x="45" y="45" width={Math.max(0, canvasWidth - 90)} height={Math.max(0, canvasHeight - 90)} rx="6" /></g>}
               {terrain.map((patch) => (
                 <g key={patch.id} transform={`translate(${patch.x} ${patch.y})`} className={`terrain-patch ${patch.kind}`} onDoubleClick={() => setTerrain((items) => items.filter((item) => item.id !== patch.id))}>
                   {patch.kind === 'building' ? <rect x="-55" y="-42" width="110" height="84" rx="7" /> : <ellipse rx={patch.kind === 'water' ? 80 : 62} ry={patch.kind === 'water' ? 40 : 52} />}
                   <text textAnchor="middle" dominantBaseline="central">{TERRAIN.find((item) => item.id === patch.kind)?.icon}</text>
                 </g>
               ))}
-              <rect width="1200" height="750" fill="url(#largeGrid)" className="grid" />
+              <rect width={canvasWidth} height={canvasHeight} fill="url(#largeGrid)" className="grid" />
               {tracks.map((track) => (
                 <g key={track.id} data-track="" onPointerDown={(event) => startDrag(event, track)} className={`placed-track ${track.trackClass}`}>
                   <TrackShape track={track} selected={selectedId === track.id} />
                 </g>
               ))}
               {tracks.length === 0 && terrain.length === 0 && (
-                <g className="empty-state" transform="translate(600 340)">
+                <g className="empty-state" transform={`translate(${canvasWidth / 2} ${canvasHeight / 2 - 35})`}>
                   <circle r="54" /><text y="8">⌁</text>
                   <text className="empty-title" y="92">Deine Anlage beginnt hier</text>
                   <text className="empty-copy" y="124">Wähle links ein Gleis oder unten ein Geländewerkzeug.</text>
                 </g>
               )}
             </svg>
-            <div className="scale"><span /> 1 m</div>
+            <div className="scale"><span style={{ width: `${UNITS_PER_METER * zoom / 100}px` }} /> 1 m</div>
             <div className="status-pill">{tracks.length} Gleise · {terrain.length} Geländeelemente</div>
           </div>
 

@@ -73,8 +73,17 @@ h2 { margin: 2px 0 0; font: 700 25px/1.1 'Fraunces', serif; color: var(--green-9
 .toolbar-divider { height: 30px; width: 1px; background: var(--line); }
 .workspace-toolbar label { display: flex; align-items: center; gap: 8px; color: #68726c; font-size: 10px; text-transform: uppercase; letter-spacing: .7px; font-weight: 700; }
 select { border: 1px solid #d8d9d3; border-radius: 7px; background: white; padding: 7px 27px 7px 8px; color: #293a31; font-size: 11px; text-transform: none; letter-spacing: 0; }
-.canvas-wrap { flex: 1; min-height: 0; position: relative; overflow: hidden; background: #e8e7df; }
-.layout-canvas { width: 100%; height: 100%; display: block; touch-action: none; color: #72837722; cursor: crosshair; }
+.dimension-control { white-space: nowrap; }
+.dimension-control span { display: flex; align-items: center; gap: 4px; text-transform: none; }
+.dimension-control input {
+  width: 58px; border: 1px solid #d8d9d3; border-radius: 7px; background: white; padding: 7px 5px; color: #293a31; font-size: 11px;
+}
+.zoom-control { display: flex; align-items: center; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: white; }
+.zoom-control button { height: 32px; min-width: 32px; border: 0; background: white; color: var(--green-800); font-weight: 700; }
+.zoom-control button:disabled { color: #adb3ae; cursor: default; }
+.zoom-control .zoom-value { min-width: 51px; border-right: 1px solid var(--line); border-left: 1px solid var(--line); color: #4f5e55; font-size: 10px; }
+.canvas-wrap { flex: 1; min-height: 0; position: relative; overflow: auto; background: #e8e7df; }
+.layout-canvas { display: block; max-width: none; touch-action: none; color: #72837722; cursor: crosshair; }
 .layout-canvas .canvas-ground { fill: #dfe8d4; }
 .layout-canvas.indoor .canvas-ground { fill: #f1eee5; }
 .grid { color: #71806e2a; pointer-events: none; }
@@ -101,7 +110,7 @@ select { border: 1px solid #d8d9d3; border-radius: 7px; background: white; paddi
 .empty-title { font: 700 24px 'Fraunces', serif; fill: #36533e; }
 .empty-copy { font-size: 13px; fill: #647369; }
 .scale { position: absolute; right: 18px; bottom: 15px; font-size: 10px; color: #4d5d53; background: #ffffffb8; padding: 7px 9px; border-radius: 6px; }
-.scale span { width: 45px; border-top: 2px solid #405447; display: inline-block; margin-right: 6px; vertical-align: middle; }
+.scale span { border-top: 2px solid #405447; display: inline-block; margin-right: 6px; vertical-align: middle; }
 .status-pill { position: absolute; left: 16px; bottom: 15px; padding: 7px 10px; background: #173c2cda; color: white; border-radius: 15px; font-size: 10px; }
 .bottom-tools { min-height: 86px; background: #fbfaf7; border-top: 1px solid var(--line); display: flex; align-items: center; padding: 9px 17px; gap: 14px; }
 .terrain-tools { display: flex; align-items: center; gap: 7px; flex: 1; }
@@ -153,7 +162,9 @@ select { border: 1px solid #d8d9d3; border-radius: 7px; background: white; paddi
 @media (max-width: 600px) {
   .save-button span { display: none; }
   .mode-switch button { padding: 7px 9px; }
-  .workspace-toolbar label { display: none; }
+  .workspace-toolbar .track-setting { display: none; }
+  .dimension-control { gap: 4px !important; }
+  .dimension-control input { width: 52px; }
   .canvas-wrap { min-height: 340px; }
   .terrain-tools > span { display: none; }
   .terrain-tools button { width: 52px; }
