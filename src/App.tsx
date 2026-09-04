@@ -103,6 +103,15 @@ const ZOOM_STEP = 25
 const uid = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`
 const clamp = (value: number, minimum: number, maximum: number) => Math.min(maximum, Math.max(minimum, value))
 
+const toCanvasPoint = (svg: SVGSVGElement, clientX: number, clientY: number) => {
+  const matrix = svg.getScreenCTM()
+  if (!matrix) return null
+  const point = svg.createSVGPoint()
+  point.x = clientX
+  point.y = clientY
+  return point.matrixTransform(matrix.inverse())
+}
+
 const loadCanvasSize = () => {
   try {
     const saved = JSON.parse(localStorage.getItem('lgb-canvas') || '{}')
@@ -206,13 +215,13 @@ function App() {
   }, [canvasSize])
 
   const canvasPoint = (event: React.PointerEvent<SVGSVGElement>) => {
-    const rect = event.currentTarget.getBoundingClientRect()
-    return { x: ((event.clientX - rect.left) / rect.width) * canvasWidth, y: ((event.clientY - rect.top) / rect.height) * canvasHeight }
+    return toCanvasPoint(event.currentTarget, event.clientX, event.clientY)
   }
 
   const handleCanvasDown = (event: React.PointerEvent<SVGSVGElement>) => {
     if ((event.target as Element).closest('[data-track]')) return
     const point = canvasPoint(event)
+    if (!point) return
     setSelectedId(null)
     if (terrainBrush) {
       setTerrain((items) => [...items, { id: uid(), x: point.x, y: point.y, kind: terrainBrush }])
@@ -227,10 +236,9 @@ function App() {
     event.stopPropagation()
     const svg = event.currentTarget.ownerSVGElement
     if (!svg) return
-    const rect = svg.getBoundingClientRect()
-    const x = ((event.clientX - rect.left) / rect.width) * canvasWidth
-    const y = ((event.clientY - rect.top) / rect.height) * canvasHeight
-    dragRef.current = { id: track.id, dx: x - track.x, dy: y - track.y }
+    const point = toCanvasPoint(svg, event.clientX, event.clientY)
+    if (!point) return
+    dragRef.current = { id: track.id, dx: point.x - track.x, dy: point.y - track.y }
     event.currentTarget.setPointerCapture(event.pointerId)
     setSelectedId(track.id)
   }
@@ -238,6 +246,7 @@ function App() {
   const moveDrag = (event: React.PointerEvent<SVGSVGElement>) => {
     if (!dragRef.current) return
     const point = canvasPoint(event)
+    if (!point) return
     const { id, dx, dy } = dragRef.current
     setTracks((items) => items.map((item) => item.id === id ? { ...item, x: point.x - dx, y: point.y - dy } : item))
   }
