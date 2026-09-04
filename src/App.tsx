@@ -387,7 +387,7 @@ function App() {
     return toCanvasPoint(event.currentTarget, event.clientX, event.clientY)
   }
 
-  const useCanvasTool = (svg: SVGSVGElement, target: EventTarget, clientX: number, clientY: number) => {
+  const applyCanvasTool = (svg: SVGSVGElement, target: EventTarget, clientX: number, clientY: number) => {
     if ((target as Element).closest('[data-track]')) return
     const point = toCanvasPoint(svg, clientX, clientY)
     if (!point) return
@@ -417,7 +417,7 @@ function App() {
 
   const handleCanvasDown = (event: React.PointerEvent<SVGSVGElement>) => {
     if (event.pointerType === 'touch') return
-    useCanvasTool(event.currentTarget, event.target, event.clientX, event.clientY)
+    applyCanvasTool(event.currentTarget, event.target, event.clientX, event.clientY)
   }
 
   const handleTouchDown = (event: React.PointerEvent<SVGSVGElement>) => {
@@ -440,7 +440,7 @@ function App() {
     const midpointX = (first.x + second.x) / 2 - bounds.left
     const midpointY = (first.y + second.y) / 2 - bounds.top
     pinchRef.current = {
-      distance: Math.hypot(second.x - first.x, second.y - first.y),
+      distance: Math.max(1, Math.hypot(second.x - first.x, second.y - first.y)),
       zoom,
       scrollLeft: wrap.scrollLeft,
       scrollTop: wrap.scrollTop,
@@ -479,7 +479,7 @@ function App() {
     const pointers = touchPointersRef.current
     const pointer = pointers.get(event.pointerId)
     if (!cancelled && pointers.size === 1 && !hadPinchRef.current && pointer && !pointer.moved && !pointer.startedOnTrack) {
-      useCanvasTool(event.currentTarget, event.target, event.clientX, event.clientY)
+      applyCanvasTool(event.currentTarget, event.target, event.clientX, event.clientY)
     }
     pointers.delete(event.pointerId)
     if (pointers.size < 2) pinchRef.current = null
