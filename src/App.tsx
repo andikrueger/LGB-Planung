@@ -365,6 +365,7 @@ function App() {
   const touchPointersRef = useRef(new Map<number, { x: number; y: number; startX: number; startY: number; moved: boolean; startedOnTrack: boolean }>())
   const pinchRef = useRef<{ distance: number; zoom: number; scrollLeft: number; scrollTop: number; focalX: number; focalY: number } | null>(null)
   const hadPinchRef = useRef(false)
+  const zoomFrameRef = useRef<number | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const canvasWidth = canvasSize.widthMeters * UNITS_PER_METER
   const canvasHeight = canvasSize.heightMeters * UNITS_PER_METER
@@ -465,7 +466,9 @@ function App() {
     const distance = Math.hypot(second.x - first.x, second.y - first.y)
     const nextZoom = clamp(Math.round(pinch.zoom * distance / pinch.distance), MIN_ZOOM, MAX_ZOOM)
     setZoom(nextZoom)
-    requestAnimationFrame(() => {
+    if (zoomFrameRef.current !== null) cancelAnimationFrame(zoomFrameRef.current)
+    zoomFrameRef.current = requestAnimationFrame(() => {
+      zoomFrameRef.current = null
       const wrap = canvasWrapRef.current
       if (!wrap) return
       const ratio = nextZoom / pinch.zoom
@@ -478,10 +481,10 @@ function App() {
     if (event.pointerType !== 'touch') return
     const pointers = touchPointersRef.current
     const pointer = pointers.get(event.pointerId)
-    if (!cancelled && pointers.size === 1 && !hadPinchRef.current && pointer && !pointer.moved && !pointer.startedOnTrack) {
+    pointers.delete(event.pointerId)
+    if (!cancelled && pointers.size === 0 && !hadPinchRef.current && pointer && !pointer.moved && !pointer.startedOnTrack) {
       applyCanvasTool(event.currentTarget, event.target, event.clientX, event.clientY)
     }
-    pointers.delete(event.pointerId)
     if (pointers.size < 2) pinchRef.current = null
     if (pointers.size === 0) hadPinchRef.current = false
   }
