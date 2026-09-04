@@ -6,9 +6,12 @@ Eine touch-optimierte Webanwendung zur groben Planung von Lehmann-Gartenbahn-Anl
 
 - Vollständiger aktueller LGB-Gleiskatalog mit Geraden, R1/R2/R3/R5-Radien,
   Hand- und Elektroweichen, Kreuzungen, Funktionsgleisen und Prellböcken
+- Maßstäbliche Gleisgeometrie sowie magnetische, automatisch ausgerichtete Verbindungen
 - Platzieren und Verschieben per Maus oder Touch
 - Drehung, Stromkreis- und Gleiskennzeichnung pro Element
 - Indoor- und Outdoor-Planungsmodus
+- Frei einstellbare Planfläche mit exakten Breiten- und Höhenangaben in Metern
+- Zoom von 25 % bis 200 % mit verschiebbarer Planfläche
 - Grobmodellierung mit Wiese, Erde, Wasser, Hügeln und Gebäuden
 - Automatische lokale Speicherung sowie JSON-Import und -Export
 

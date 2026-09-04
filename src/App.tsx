@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
 
 type TrackKind = 'straight' | 'curve' | 'switch-left' | 'switch-right' | 'switch-three' | 'crossing' | 'buffer' | 'special'
@@ -11,8 +11,13 @@ type TrackDefinition = {
   name: string
   detail: string
   kind: TrackKind
-  size: number
+  lengthMm: number
+  radiusMm?: number
+  angleDeg?: number
 }
+
+type TrackConnection = { x: number; y: number; angle: number }
+type TrackGeometry = { paths: string[]; connections: TrackConnection[] }
 
 type PlacedTrack = {
   id: string
@@ -31,50 +36,55 @@ type TerrainPatch = {
   kind: TerrainKind
 }
 
+type CanvasSize = {
+  widthMeters: number
+  heightMeters: number
+}
+
 const TRACKS: TrackDefinition[] = [
-  { id: 'g41', article: '10040', name: 'Gerades Gleis', detail: '41 mm', kind: 'straight', size: 38 },
-  { id: 'g52', article: '10050', name: 'Gerades Gleis', detail: '52 mm', kind: 'straight', size: 42 },
-  { id: 'g75', article: '10070', name: 'Gerades Gleis', detail: '75 mm', kind: 'straight', size: 46 },
-  { id: 'g82', article: '10080', name: 'Gerades Gleis', detail: '82 mm', kind: 'straight', size: 48 },
-  { id: 'g-adjustable', article: '10090', name: 'Verstellbares Gleis', detail: '88–120 mm', kind: 'special', size: 54 },
-  { id: 'g150', article: '10150', name: 'Gerades Gleis', detail: '150 mm', kind: 'straight', size: 58 },
-  { id: 'g300', article: '10000', name: 'Gerades Gleis', detail: '300 mm', kind: 'straight', size: 80 },
-  { id: 'g600', article: '10600', name: 'Gerades Gleis', detail: '600 mm', kind: 'straight', size: 120 },
-  { id: 'g1200', article: '10610', name: 'Gerades Gleis', detail: '1.200 mm', kind: 'straight', size: 180 },
-  { id: 'r1-7-5', article: '11040', name: 'Kurve R1', detail: '7,5° · R 600 mm', kind: 'curve', size: 48 },
-  { id: 'r1-15', article: '11020', name: 'Kurve R1', detail: '15° · R 600 mm', kind: 'curve', size: 68 },
-  { id: 'r1', article: '11000', name: 'Kurve R1', detail: '30° · R 600 mm', kind: 'curve', size: 88 },
-  { id: 'r2', article: '15000', name: 'Kurve R2', detail: '30° · R 780 mm', kind: 'curve', size: 100 },
-  { id: 'r3', article: '16000', name: 'Kurve R3', detail: '22,5° · R 1.195 mm', kind: 'curve', size: 112 },
-  { id: 'r5-7-5', article: '18020', name: 'Kurve R5', detail: '7,5° · R 2.320 mm', kind: 'curve', size: 92 },
-  { id: 'r5', article: '18000', name: 'Kurve R5', detail: '15° · R 2.320 mm', kind: 'curve', size: 126 },
-  { id: 'wr-r1', article: '12000', name: 'Handweiche rechts R1', detail: '30° · 300 mm', kind: 'switch-right', size: 116 },
-  { id: 'wr-r1-electric', article: '12050', name: 'Elektroweiche rechts R1', detail: '30° · 300 mm', kind: 'switch-right', size: 116 },
-  { id: 'wl-r1', article: '12100', name: 'Handweiche links R1', detail: '30° · 300 mm', kind: 'switch-left', size: 116 },
-  { id: 'wl-r1-electric', article: '12150', name: 'Elektroweiche links R1', detail: '30° · 300 mm', kind: 'switch-left', size: 116 },
-  { id: 'wr-r3', article: '16040', name: 'Handweiche rechts R3', detail: '22,5° · R 1.195 mm', kind: 'switch-right', size: 138 },
-  { id: 'wr-r3-electric', article: '16050', name: 'Elektroweiche rechts R3', detail: '22,5° · R 1.195 mm', kind: 'switch-right', size: 138 },
-  { id: 'wl-r3', article: '16140', name: 'Handweiche links R3', detail: '22,5° · R 1.195 mm', kind: 'switch-left', size: 138 },
-  { id: 'wl-r3-electric', article: '16150', name: 'Elektroweiche links R3', detail: '22,5° · R 1.195 mm', kind: 'switch-left', size: 138 },
-  { id: 'wr-r5-manual', article: '18050', name: 'Handweiche rechts R5', detail: '15° · 600 mm', kind: 'switch-right', size: 166 },
-  { id: 'wl-r5-manual', article: '18150', name: 'Handweiche links R5', detail: '15° · 600 mm', kind: 'switch-left', size: 166 },
-  { id: 'double-slip', article: '12260', name: 'Doppelkreuzungsweiche', detail: 'R2 · 22,5° · 375 mm', kind: 'crossing', size: 138 },
-  { id: 'three-way', article: '12360', name: 'Dreiwegeweiche', detail: 'R1 · 30° · 375 mm', kind: 'switch-three', size: 138 },
-  { id: 'cross', article: '13000', name: 'Kreuzung R1', detail: '30°', kind: 'crossing', size: 105 },
-  { id: 'cross-90', article: '13100', name: 'Kreuzung', detail: '90°', kind: 'crossing', size: 92 },
-  { id: 'cross-r3', article: '13200', name: 'Kreuzung R3', detail: '22,5° · 375 mm', kind: 'crossing', size: 138 },
-  { id: 'reverse-loop', article: '10151', name: 'Kehrschleifengleis-Set', detail: '2 × 150 mm · analog', kind: 'special', size: 62 },
-  { id: 'isolation-double', article: '10152', name: 'Trenngleis, zweipolig', detail: '150 mm', kind: 'special', size: 62 },
-  { id: 'isolation-single', article: '10153', name: 'Trenngleis, einpolig', detail: '150 mm', kind: 'special', size: 62 },
-  { id: 'uncoupler-manual', article: '10520', name: 'Entkupplungsgleis manuell', detail: '150 mm', kind: 'special', size: 62 },
-  { id: 'uncoupler', article: '10560', name: 'Entkupplungsgleis elektrisch', detail: '150 mm', kind: 'special', size: 62 },
-  { id: 'flex', article: '10005', name: 'Flexgleis-Schiene', detail: '1.500 mm · individuell biegbar', kind: 'special', size: 200 },
-  { id: 'rack', article: '10210', name: 'Zahnstange', detail: '300 mm · Zahnradbahn', kind: 'special', size: 80 },
-  { id: 'road-crossing', article: '10007', name: 'Straßenüberfahrt', detail: '300 mm', kind: 'special', size: 80 },
-  { id: 'buffer', article: '10310', name: 'Prellbock beleuchtet', detail: 'Modern', kind: 'buffer', size: 58 },
-  { id: 'buffer-standard', article: '10315', name: 'Prellbock', detail: 'Standard', kind: 'buffer', size: 58 },
-  { id: 'buffer-rhb', article: '10316', name: 'Prellbock RhB', detail: 'Epoche VI', kind: 'buffer', size: 58 },
-  { id: 'buffer-old', article: '10320', name: 'Prellbock Old Timer', detail: 'Gebogene Schienen', kind: 'buffer', size: 58 },
+  { id: 'g41', article: '10040', name: 'Gerades Gleis', detail: '41 mm', kind: 'straight', lengthMm: 41 },
+  { id: 'g52', article: '10050', name: 'Gerades Gleis', detail: '52 mm', kind: 'straight', lengthMm: 52 },
+  { id: 'g75', article: '10070', name: 'Gerades Gleis', detail: '75 mm', kind: 'straight', lengthMm: 75 },
+  { id: 'g82', article: '10080', name: 'Gerades Gleis', detail: '82 mm', kind: 'straight', lengthMm: 82 },
+  { id: 'g-adjustable', article: '10090', name: 'Verstellbares Gleis', detail: '88–120 mm', kind: 'special', lengthMm: 104 },
+  { id: 'g150', article: '10150', name: 'Gerades Gleis', detail: '150 mm', kind: 'straight', lengthMm: 150 },
+  { id: 'g300', article: '10000', name: 'Gerades Gleis', detail: '300 mm', kind: 'straight', lengthMm: 300 },
+  { id: 'g600', article: '10600', name: 'Gerades Gleis', detail: '600 mm', kind: 'straight', lengthMm: 600 },
+  { id: 'g1200', article: '10610', name: 'Gerades Gleis', detail: '1.200 mm', kind: 'straight', lengthMm: 1200 },
+  { id: 'r1-7-5', article: '11040', name: 'Kurve R1', detail: '7,5° · R 600 mm', kind: 'curve', lengthMm: 79, radiusMm: 600, angleDeg: 7.5 },
+  { id: 'r1-15', article: '11020', name: 'Kurve R1', detail: '15° · R 600 mm', kind: 'curve', lengthMm: 157, radiusMm: 600, angleDeg: 15 },
+  { id: 'r1', article: '11000', name: 'Kurve R1', detail: '30° · R 600 mm', kind: 'curve', lengthMm: 314, radiusMm: 600, angleDeg: 30 },
+  { id: 'r2', article: '15000', name: 'Kurve R2', detail: '30° · R 780 mm', kind: 'curve', lengthMm: 408, radiusMm: 780, angleDeg: 30 },
+  { id: 'r3', article: '16000', name: 'Kurve R3', detail: '22,5° · R 1.195 mm', kind: 'curve', lengthMm: 469, radiusMm: 1195, angleDeg: 22.5 },
+  { id: 'r5-7-5', article: '18020', name: 'Kurve R5', detail: '7,5° · R 2.320 mm', kind: 'curve', lengthMm: 304, radiusMm: 2320, angleDeg: 7.5 },
+  { id: 'r5', article: '18000', name: 'Kurve R5', detail: '15° · R 2.320 mm', kind: 'curve', lengthMm: 607, radiusMm: 2320, angleDeg: 15 },
+  { id: 'wr-r1', article: '12000', name: 'Handweiche rechts R1', detail: '30° · 300 mm', kind: 'switch-right', lengthMm: 300, radiusMm: 600, angleDeg: 30 },
+  { id: 'wr-r1-electric', article: '12050', name: 'Elektroweiche rechts R1', detail: '30° · 300 mm', kind: 'switch-right', lengthMm: 300, radiusMm: 600, angleDeg: 30 },
+  { id: 'wl-r1', article: '12100', name: 'Handweiche links R1', detail: '30° · 300 mm', kind: 'switch-left', lengthMm: 300, radiusMm: 600, angleDeg: 30 },
+  { id: 'wl-r1-electric', article: '12150', name: 'Elektroweiche links R1', detail: '30° · 300 mm', kind: 'switch-left', lengthMm: 300, radiusMm: 600, angleDeg: 30 },
+  { id: 'wr-r3', article: '16040', name: 'Handweiche rechts R3', detail: '22,5° · R 1.195 mm', kind: 'switch-right', lengthMm: 440, radiusMm: 1195, angleDeg: 22.5 },
+  { id: 'wr-r3-electric', article: '16050', name: 'Elektroweiche rechts R3', detail: '22,5° · R 1.195 mm', kind: 'switch-right', lengthMm: 440, radiusMm: 1195, angleDeg: 22.5 },
+  { id: 'wl-r3', article: '16140', name: 'Handweiche links R3', detail: '22,5° · R 1.195 mm', kind: 'switch-left', lengthMm: 440, radiusMm: 1195, angleDeg: 22.5 },
+  { id: 'wl-r3-electric', article: '16150', name: 'Elektroweiche links R3', detail: '22,5° · R 1.195 mm', kind: 'switch-left', lengthMm: 440, radiusMm: 1195, angleDeg: 22.5 },
+  { id: 'wr-r5-manual', article: '18050', name: 'Handweiche rechts R5', detail: '15° · 600 mm', kind: 'switch-right', lengthMm: 600, radiusMm: 2320, angleDeg: 15 },
+  { id: 'wl-r5-manual', article: '18150', name: 'Handweiche links R5', detail: '15° · 600 mm', kind: 'switch-left', lengthMm: 600, radiusMm: 2320, angleDeg: 15 },
+  { id: 'double-slip', article: '12260', name: 'Doppelkreuzungsweiche', detail: 'R2 · 22,5° · 375 mm', kind: 'crossing', lengthMm: 375, angleDeg: 22.5 },
+  { id: 'three-way', article: '12360', name: 'Dreiwegeweiche', detail: 'R1 · 30° · 375 mm', kind: 'switch-three', lengthMm: 375, radiusMm: 600, angleDeg: 30 },
+  { id: 'cross', article: '13000', name: 'Kreuzung R1', detail: '30°', kind: 'crossing', lengthMm: 300, angleDeg: 30 },
+  { id: 'cross-90', article: '13100', name: 'Kreuzung', detail: '90°', kind: 'crossing', lengthMm: 150, angleDeg: 90 },
+  { id: 'cross-r3', article: '13200', name: 'Kreuzung R3', detail: '22,5° · 375 mm', kind: 'crossing', lengthMm: 375, angleDeg: 22.5 },
+  { id: 'reverse-loop', article: '10151', name: 'Kehrschleifengleis-Set', detail: '2 × 150 mm · analog', kind: 'special', lengthMm: 300 },
+  { id: 'isolation-double', article: '10152', name: 'Trenngleis, zweipolig', detail: '150 mm', kind: 'special', lengthMm: 150 },
+  { id: 'isolation-single', article: '10153', name: 'Trenngleis, einpolig', detail: '150 mm', kind: 'special', lengthMm: 150 },
+  { id: 'uncoupler-manual', article: '10520', name: 'Entkupplungsgleis manuell', detail: '150 mm', kind: 'special', lengthMm: 150 },
+  { id: 'uncoupler', article: '10560', name: 'Entkupplungsgleis elektrisch', detail: '150 mm', kind: 'special', lengthMm: 150 },
+  { id: 'flex', article: '10005', name: 'Flexgleis-Schiene', detail: '1.500 mm · individuell biegbar', kind: 'special', lengthMm: 1500 },
+  { id: 'rack', article: '10210', name: 'Zahnstange', detail: '300 mm · Zahnradbahn', kind: 'special', lengthMm: 300 },
+  { id: 'road-crossing', article: '10007', name: 'Straßenüberfahrt', detail: '300 mm', kind: 'special', lengthMm: 300 },
+  { id: 'buffer', article: '10310', name: 'Prellbock beleuchtet', detail: 'Modern', kind: 'buffer', lengthMm: 300 },
+  { id: 'buffer-standard', article: '10315', name: 'Prellbock', detail: 'Standard', kind: 'buffer', lengthMm: 300 },
+  { id: 'buffer-rhb', article: '10316', name: 'Prellbock RhB', detail: 'Epoche VI', kind: 'buffer', lengthMm: 300 },
+  { id: 'buffer-old', article: '10320', name: 'Prellbock Old Timer', detail: 'Gebogene Schienen', kind: 'buffer', lengthMm: 300 },
 ]
 
 const CIRCUITS = [
@@ -92,54 +102,234 @@ const TERRAIN: { id: TerrainKind; label: string; icon: string }[] = [
   { id: 'building', label: 'Gebäude', icon: '▣' },
 ]
 
-const uid = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`
+const UNITS_PER_METER = 150
+const DEFAULT_CANVAS = { widthMeters: 8, heightMeters: 5 }
+const MIN_CANVAS_METERS = 1
+const MAX_CANVAS_METERS = 100
+const MIN_ZOOM = 25
+const MAX_ZOOM = 200
+const ZOOM_STEP = 25
+const MILLIMETERS_TO_UNITS = UNITS_PER_METER / 1000
+const SNAP_DISTANCE = 15
+const CONNECTION_TOLERANCE_UNITS = 1
+const ROTATION_STEP = 7.5
+const NO_CONNECTIONS = new Set<number>()
 
-function TrackShape({ track, selected }: { track: PlacedTrack; selected: boolean }) {
+const uid = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`
+const clamp = (value: number, minimum: number, maximum: number) => Math.min(maximum, Math.max(minimum, value))
+const toUnits = (millimeters: number) => millimeters * MILLIMETERS_TO_UNITS
+const toRadians = (degrees: number) => degrees * Math.PI / 180
+const normalizeAngle = (angle: number) => ((angle % 360) + 360) % 360
+
+const getTrackGeometry = (definition: TrackDefinition): TrackGeometry => {
+  const length = toUnits(definition.lengthMm)
+  const half = length / 2
+
+  if (definition.kind === 'curve') {
+    const radius = toUnits(definition.radiusMm ?? definition.lengthMm)
+    const angle = definition.angleDeg ?? 0
+    const halfAngle = toRadians(angle / 2)
+    const x = radius * Math.sin(halfAngle)
+    return {
+      paths: [`M ${-x} 0 A ${radius} ${radius} 0 0 1 ${x} 0`],
+      connections: [
+        { x: -x, y: 0, angle: 180 - angle / 2 },
+        { x, y: 0, angle: angle / 2 },
+      ],
+    }
+  }
+
+  if (definition.kind === 'switch-left' || definition.kind === 'switch-right' || definition.kind === 'switch-three') {
+    const radius = toUnits(definition.radiusMm ?? definition.lengthMm)
+    const angle = definition.angleDeg ?? 0
+    const angleRadians = toRadians(angle)
+    const branchX = -half + radius * Math.sin(angleRadians)
+    const branchOffset = radius * (1 - Math.cos(angleRadians))
+    const sides = definition.kind === 'switch-three' ? [-1, 1] : [definition.kind === 'switch-left' ? -1 : 1]
+    const paths = [`M ${-half} 0 L ${half} 0`]
+    const connections: TrackConnection[] = [{ x: -half, y: 0, angle: 180 }, { x: half, y: 0, angle: 0 }]
+    sides.forEach((side) => {
+      const branchY = side * branchOffset
+      paths.push(`M ${-half} 0 A ${radius} ${radius} 0 0 ${side > 0 ? 1 : 0} ${branchX} ${branchY}`)
+      connections.push({ x: branchX, y: branchY, angle: side * angle })
+    })
+    return { paths, connections }
+  }
+
+  if (definition.kind === 'crossing') {
+    const halfAngle = toRadians((definition.angleDeg ?? 90) / 2)
+    const x = half * Math.cos(halfAngle)
+    const y = half * Math.sin(halfAngle)
+    return {
+      paths: [`M ${-x} ${-y} L ${x} ${y}`, `M ${-x} ${y} L ${x} ${-y}`],
+      connections: [
+        { x: -x, y: -y, angle: 180 + (definition.angleDeg ?? 90) / 2 },
+        { x, y, angle: (definition.angleDeg ?? 90) / 2 },
+        { x: -x, y, angle: 180 - (definition.angleDeg ?? 90) / 2 },
+        { x, y: -y, angle: -(definition.angleDeg ?? 90) / 2 },
+      ],
+    }
+  }
+
+  return {
+    paths: [`M ${-half} 0 L ${half} 0`],
+    connections: definition.kind === 'buffer'
+      ? [{ x: -half, y: 0, angle: 180 }]
+      : [{ x: -half, y: 0, angle: 180 }, { x: half, y: 0, angle: 0 }],
+  }
+}
+
+const rotatePoint = (point: TrackConnection, rotation: number) => {
+  const radians = toRadians(rotation)
+  return {
+    x: point.x * Math.cos(radians) - point.y * Math.sin(radians),
+    y: point.x * Math.sin(radians) + point.y * Math.cos(radians),
+    angle: normalizeAngle(point.angle + rotation),
+  }
+}
+
+const getWorldConnections = (track: PlacedTrack) => {
+  const definition = TRACKS.find((item) => item.id === track.definitionId) ?? TRACKS[0]
+  return getTrackGeometry(definition).connections.map((connection, index) => {
+    const rotated = rotatePoint(connection, track.rotation)
+    return { ...rotated, x: track.x + rotated.x, y: track.y + rotated.y, trackId: track.id, index }
+  })
+}
+
+const distance = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.hypot(a.x - b.x, a.y - b.y)
+
+const getOpenConnections = (otherTracks: PlacedTrack[], excludedId?: string) => {
+  const connections = otherTracks.filter((track) => track.id !== excludedId).flatMap(getWorldConnections)
+  const buckets = new Map<string, typeof connections>()
+  const coordinate = (value: number) => Math.floor(value / CONNECTION_TOLERANCE_UNITS)
+  const key = (x: number, y: number) => `${x}:${y}`
+  connections.forEach((connection) => {
+    const bucketKey = key(coordinate(connection.x), coordinate(connection.y))
+    const bucket = buckets.get(bucketKey) ?? []
+    bucket.push(connection)
+    buckets.set(bucketKey, bucket)
+  })
+  return connections.filter((connection) => {
+    const x = coordinate(connection.x)
+    const y = coordinate(connection.y)
+    for (let offsetX = -1; offsetX <= 1; offsetX += 1) {
+      for (let offsetY = -1; offsetY <= 1; offsetY += 1) {
+        const nearby = buckets.get(key(x + offsetX, y + offsetY)) ?? []
+        if (nearby.some((other) => other.trackId !== connection.trackId && distance(connection, other) < CONNECTION_TOLERANCE_UNITS)) return false
+      }
+    }
+    return true
+  })
+}
+
+const alignConnection = (track: PlacedTrack, source: TrackConnection, target: TrackConnection) => {
+  const rotation = normalizeAngle(target.angle + 180 - source.angle)
+  const rotated = rotatePoint(source, rotation)
+  return { ...track, x: target.x - rotated.x, y: target.y - rotated.y, rotation }
+}
+
+const snapTrack = (track: PlacedTrack, otherTracks: PlacedTrack[]) => {
+  const definition = TRACKS.find((item) => item.id === track.definitionId) ?? TRACKS[0]
+  const geometry = getTrackGeometry(definition)
+  const worldConnections = getWorldConnections(track)
+  const targets = getOpenConnections(otherTracks, track.id)
+  let best: { source: TrackConnection; target: TrackConnection; distance: number } | null = null
+
+  for (const [index, world] of worldConnections.entries()) {
+    for (const target of targets) {
+      const gap = distance(world, target)
+      if (gap <= SNAP_DISTANCE && (!best || gap < best.distance)) {
+        best = { source: geometry.connections[index], target, distance: gap }
+      }
+    }
+  }
+
+  return best ? alignConnection(track, best.source, best.target) : track
+}
+
+const getConnectedIndexes = (tracks: PlacedTrack[]) => {
+  const result = new Map<string, Set<number>>()
+  const buckets = new Map<string, ReturnType<typeof getWorldConnections>>()
+  const connections = tracks.flatMap(getWorldConnections)
+  const bucketCoordinate = (value: number) => Math.floor(value / CONNECTION_TOLERANCE_UNITS)
+  const bucketKey = (x: number, y: number) => `${x}:${y}`
+
+  connections.forEach((connection) => {
+    result.set(connection.trackId, result.get(connection.trackId) ?? new Set())
+    const x = bucketCoordinate(connection.x)
+    const y = bucketCoordinate(connection.y)
+    const key = bucketKey(x, y)
+    const bucket = buckets.get(key) ?? []
+    bucket.push(connection)
+    buckets.set(key, bucket)
+  })
+
+  connections.forEach((connection) => {
+    const x = bucketCoordinate(connection.x)
+    const y = bucketCoordinate(connection.y)
+    for (let offsetX = -1; offsetX <= 1; offsetX += 1) {
+      for (let offsetY = -1; offsetY <= 1; offsetY += 1) {
+        const nearby = buckets.get(bucketKey(x + offsetX, y + offsetY)) ?? []
+        if (nearby.some((other) => other.trackId !== connection.trackId && distance(connection, other) < CONNECTION_TOLERANCE_UNITS)) {
+          result.get(connection.trackId)?.add(connection.index)
+        }
+      }
+    }
+  })
+
+  return result
+}
+
+const normalizeCanvasSize = (value: unknown): CanvasSize => {
+  const size = value && typeof value === 'object' ? value as Partial<CanvasSize> : {}
+  return {
+    widthMeters: clamp(Number(size.widthMeters) || DEFAULT_CANVAS.widthMeters, MIN_CANVAS_METERS, MAX_CANVAS_METERS),
+    heightMeters: clamp(Number(size.heightMeters) || DEFAULT_CANVAS.heightMeters, MIN_CANVAS_METERS, MAX_CANVAS_METERS),
+  }
+}
+
+const toCanvasPoint = (svg: SVGSVGElement, clientX: number, clientY: number) => {
+  const matrix = svg.getScreenCTM()
+  if (!matrix) return null
+  const point = svg.createSVGPoint()
+  point.x = clientX
+  point.y = clientY
+  return point.matrixTransform(matrix.inverse())
+}
+
+const loadCanvasSize = () => {
+  try {
+    return normalizeCanvasSize(JSON.parse(localStorage.getItem('lgb-canvas') || '{}'))
+  } catch {
+    return DEFAULT_CANVAS
+  }
+}
+
+function TrackShape({ track, selected, preview = false, connected = NO_CONNECTIONS }: { track: PlacedTrack; selected: boolean; preview?: boolean; connected?: Set<number> }) {
   const definition = TRACKS.find((item) => item.id === track.definitionId) ?? TRACKS[0]
   const circuit = CIRCUITS.find((item) => item.id === track.circuit) ?? CIRCUITS[0]
   const rail = circuit.color
-  const length = definition.size
-  const common = { fill: 'none', stroke: rail, strokeWidth: 7, strokeLinecap: 'round' as const }
-  const sleeper = { stroke: '#433b32', strokeWidth: 16, strokeDasharray: '3 9', opacity: .85 }
+  const geometry = getTrackGeometry(definition)
+  const extent = Math.max(toUnits(definition.lengthMm), toUnits(definition.radiusMm ?? 0) * (1 - Math.cos(toRadians(definition.angleDeg ?? 0))), 30)
+  const previewScale = Math.min(1, 78 / extent)
+  const transform = `translate(${track.x} ${track.y}) rotate(${track.rotation})${preview ? ` scale(${previewScale})` : ''}`
 
   return (
-    <g transform={`translate(${track.x} ${track.y}) rotate(${track.rotation})`} className="track-shape">
-      {selected && <rect x={-length / 2 - 15} y={-36} width={length + 30} height={72} rx={14} className="selection-ring" />}
-      {definition.kind === 'straight' || definition.kind === 'special' || definition.kind === 'buffer' ? (
-        <>
-          <line x1={-length / 2} y1="0" x2={length / 2} y2="0" {...sleeper} />
-          <line x1={-length / 2} y1="-7" x2={length / 2} y2="-7" {...common} />
-          <line x1={-length / 2} y1="7" x2={length / 2} y2="7" {...common} />
-          {definition.kind === 'special' && <rect x="-14" y="-24" width="28" height="48" rx="5" fill="#f4c65d" stroke="#433b32" strokeWidth="3" />}
-          {definition.kind === 'buffer' && <path d={`M ${length / 2 - 8} -25 V 25 M ${length / 2 - 18} -19 L ${length / 2 - 8} 0 L ${length / 2 - 18} 19`} stroke="#433b32" strokeWidth="7" fill="none" />}
-        </>
-      ) : definition.kind === 'curve' ? (
-        <>
-          <path d={`M ${-length / 2} 22 Q 0 -34 ${length / 2} 6`} {...sleeper} />
-          <path d={`M ${-length / 2} 15 Q 0 -41 ${length / 2} -1`} {...common} />
-          <path d={`M ${-length / 2} 29 Q 0 -27 ${length / 2} 13`} {...common} />
-        </>
-      ) : definition.kind === 'crossing' ? (
-        <>
-          <path d={`M ${-length / 2} -20 L ${length / 2} 20 M ${-length / 2} 20 L ${length / 2} -20`} {...sleeper} />
-          <path d={`M ${-length / 2} -27 L ${length / 2} 13 M ${-length / 2} -13 L ${length / 2} 27 M ${-length / 2} 13 L ${length / 2} -27 M ${-length / 2} 27 L ${length / 2} -13`} {...common} />
-        </>
-      ) : definition.kind === 'switch-three' ? (
-        <>
-          <path d={`M ${-length / 2} 0 L ${length / 2} 0 M -10 0 Q 35 -42 ${length / 2} -38 M -10 0 Q 35 42 ${length / 2} 38`} {...sleeper} />
-          <path d={`M ${-length / 2} -7 L ${length / 2} -7 M ${-length / 2} 7 L ${length / 2} 7`} {...common} />
-          <path d={`M -12 -5 Q 32 -48 ${length / 2} -45 M -7 7 Q 38 -35 ${length / 2} -31`} {...common} />
-          <path d={`M -12 5 Q 32 48 ${length / 2} 45 M -7 -7 Q 38 35 ${length / 2} 31`} {...common} />
-        </>
-      ) : (
-        <>
-          <path d={`M ${-length / 2} 0 L ${length / 2} 0 M -10 0 Q 35 ${definition.kind === 'switch-left' ? -42 : 42} ${length / 2} ${definition.kind === 'switch-left' ? -38 : 38}`} {...sleeper} />
-          <path d={`M ${-length / 2} -7 L ${length / 2} -7 M ${-length / 2} 7 L ${length / 2} 7`} {...common} />
-          <path d={`M -12 -5 Q 32 ${definition.kind === 'switch-left' ? -48 : 34} ${length / 2} ${definition.kind === 'switch-left' ? -45 : 31}`} {...common} />
-          <path d={`M -7 7 Q 38 ${definition.kind === 'switch-left' ? -35 : 48} ${length / 2} ${definition.kind === 'switch-left' ? -31 : 45}`} {...common} />
-        </>
-      )}
-      <g className="track-badge" transform={`translate(0 34) rotate(${-track.rotation})`}>
+    <g transform={transform} className="track-shape">
+      {selected && geometry.paths.map((path, index) => <path key={`selection-${index}`} d={path} className="selection-ring" />)}
+      {geometry.paths.map((path, index) => (
+        <g key={index}>
+          <path d={path} className="track-sleepers" />
+          <path d={path} className="track-rails" style={{ stroke: rail }} />
+          <path d={path} className="track-gauge" />
+        </g>
+      ))}
+      {definition.kind === 'special' && <rect x="-7" y="-10" width="14" height="20" rx="3" className="special-marker" />}
+      {definition.kind === 'buffer' && <path d={`M ${toUnits(definition.lengthMm) / 2 - 3} -12 V 12`} className="buffer-stop" />}
+      {!preview && geometry.connections.map((connection, index) => (
+        <circle key={index} cx={connection.x} cy={connection.y} r={connected.has(index) ? 4 : 3} className={`track-connection ${connected.has(index) ? 'connected' : ''} ${selected ? 'visible' : ''}`} />
+      ))}
+      <g className="track-badge" transform={`translate(0 20) rotate(${-track.rotation})`}>
         <rect x="-16" y="-10" width="32" height="20" rx="10" fill={rail} />
         <text textAnchor="middle" dominantBaseline="central">{track.trackClass === 'siding' ? 'AG' : track.trackClass === 'station' ? 'Bf' : track.circuit}</text>
       </g>
@@ -164,27 +354,58 @@ function App() {
   const [catalogSearch, setCatalogSearch] = useState('')
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [projectName, setProjectName] = useState('Meine Gartenbahn')
+  const [canvasSize, setCanvasSize] = useState(loadCanvasSize)
+  const [canvasInputs, setCanvasInputs] = useState(() => ({
+    widthMeters: String(canvasSize.widthMeters),
+    heightMeters: String(canvasSize.heightMeters),
+  }))
+  const [zoom, setZoom] = useState(100)
   const dragRef = useRef<{ id: string; dx: number; dy: number } | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+  const canvasWidth = canvasSize.widthMeters * UNITS_PER_METER
+  const canvasHeight = canvasSize.heightMeters * UNITS_PER_METER
+  const roomWidth = Math.max(0, canvasWidth - 90)
+  const roomHeight = Math.max(0, canvasHeight - 90)
+  const roomDoorWidth = Math.min(135, roomWidth * .25)
+  const roomDoorDepth = Math.min(100, roomHeight * .25)
+  const connectedIndexes = useMemo(() => getConnectedIndexes(tracks), [tracks])
 
   useEffect(() => {
     localStorage.setItem('lgb-tracks', JSON.stringify(tracks))
     localStorage.setItem('lgb-terrain', JSON.stringify(terrain))
   }, [tracks, terrain])
 
+  useEffect(() => {
+    localStorage.setItem('lgb-canvas', JSON.stringify(canvasSize))
+  }, [canvasSize])
+
   const canvasPoint = (event: React.PointerEvent<SVGSVGElement>) => {
-    const rect = event.currentTarget.getBoundingClientRect()
-    return { x: ((event.clientX - rect.left) / rect.width) * 1200, y: ((event.clientY - rect.top) / rect.height) * 750 }
+    return toCanvasPoint(event.currentTarget, event.clientX, event.clientY)
   }
 
   const handleCanvasDown = (event: React.PointerEvent<SVGSVGElement>) => {
     if ((event.target as Element).closest('[data-track]')) return
     const point = canvasPoint(event)
+    if (!point) return
     setSelectedId(null)
     if (terrainBrush) {
       setTerrain((items) => [...items, { id: uid(), x: point.x, y: point.y, kind: terrainBrush }])
     } else if (activeTrack) {
-      const item: PlacedTrack = { id: uid(), definitionId: activeTrack, x: point.x, y: point.y, rotation: 0, circuit: activeCircuit, trackClass }
+      const definition = TRACKS.find((track) => track.id === activeTrack) ?? TRACKS[0]
+      let item: PlacedTrack = { id: uid(), definitionId: activeTrack, x: point.x, y: point.y, rotation: 0, circuit: activeCircuit, trackClass }
+      const target = getOpenConnections(tracks)
+        .map((connection) => ({ connection, gap: distance(point, connection) }))
+        .filter(({ gap }) => gap <= SNAP_DISTANCE)
+        .sort((a, b) => a.gap - b.gap)[0]?.connection
+      if (target) {
+        const source = getTrackGeometry(definition).connections
+          .map((connection) => {
+            const rotated = rotatePoint(connection, item.rotation)
+            return { connection, gap: distance({ x: item.x + rotated.x, y: item.y + rotated.y }, target) }
+          })
+          .sort((a, b) => a.gap - b.gap)[0].connection
+        item = alignConnection(item, source, target)
+      }
       setTracks((items) => [...items, item])
       setSelectedId(item.id)
     }
@@ -194,10 +415,9 @@ function App() {
     event.stopPropagation()
     const svg = event.currentTarget.ownerSVGElement
     if (!svg) return
-    const rect = svg.getBoundingClientRect()
-    const x = ((event.clientX - rect.left) / rect.width) * 1200
-    const y = ((event.clientY - rect.top) / rect.height) * 750
-    dragRef.current = { id: track.id, dx: x - track.x, dy: y - track.y }
+    const point = toCanvasPoint(svg, event.clientX, event.clientY)
+    if (!point) return
+    dragRef.current = { id: track.id, dx: point.x - track.x, dy: point.y - track.y }
     event.currentTarget.setPointerCapture(event.pointerId)
     setSelectedId(track.id)
   }
@@ -205,12 +425,21 @@ function App() {
   const moveDrag = (event: React.PointerEvent<SVGSVGElement>) => {
     if (!dragRef.current) return
     const point = canvasPoint(event)
+    if (!point) return
     const { id, dx, dy } = dragRef.current
-    setTracks((items) => items.map((item) => item.id === id ? { ...item, x: point.x - dx, y: point.y - dy } : item))
+    setTracks((items) => items.map((item) => item.id === id
+      ? snapTrack({ ...item, x: point.x - dx, y: point.y - dy }, items)
+      : item))
   }
 
   const updateSelected = (change: Partial<PlacedTrack>) => {
     setTracks((items) => items.map((item) => item.id === selectedId ? { ...item, ...change } : item))
+  }
+
+  const commitCanvasDimension = (dimension: keyof CanvasSize) => {
+    const value = clamp(Number(canvasInputs[dimension]) || canvasSize[dimension], MIN_CANVAS_METERS, MAX_CANVAS_METERS)
+    setCanvasSize((size) => ({ ...size, [dimension]: value }))
+    setCanvasInputs((inputs) => ({ ...inputs, [dimension]: String(value) }))
   }
 
   const selected = tracks.find((item) => item.id === selectedId)
@@ -232,7 +461,7 @@ function App() {
   }
 
   const exportProject = () => {
-    const blob = new Blob([JSON.stringify({ version: 1, projectName, environment, tracks, terrain }, null, 2)], { type: 'application/json' })
+    const blob = new Blob([JSON.stringify({ version: 2, projectName, environment, canvas: canvasSize, tracks, terrain }, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
@@ -251,10 +480,17 @@ function App() {
       try {
         const data = JSON.parse(String(reader.result))
         if (!Array.isArray(data.tracks) || !Array.isArray(data.terrain)) throw new Error()
+        if (data.version !== undefined && data.version !== 1 && data.version !== 2) throw new Error()
         setTracks(data.tracks)
         setTerrain(data.terrain)
         setProjectName(data.projectName || 'Importierter Plan')
         setEnvironment(data.environment === 'indoor' ? 'indoor' : 'outdoor')
+        const importedCanvasSize = normalizeCanvasSize(data.canvas)
+        setCanvasSize(importedCanvasSize)
+        setCanvasInputs({
+          widthMeters: String(importedCanvasSize.widthMeters),
+          heightMeters: String(importedCanvasSize.heightMeters),
+        })
       } catch {
         window.alert('Diese Datei ist kein gültiger LGB-Plan.')
       }
@@ -303,14 +539,14 @@ function App() {
             {filteredTracks.map((item) => (
               <button key={item.id} className={`catalog-card ${activeTrack === item.id && !terrainBrush ? 'active' : ''}`} onClick={() => { setActiveTrack(item.id); setTerrainBrush(null); if (window.innerWidth <= 900) setSidebarOpen(false) }}>
                 <span className={`track-preview ${item.kind}`} aria-hidden="true">
-                  <svg viewBox="0 0 100 56"><TrackShape track={{ id: '', definitionId: item.id, x: 50, y: 28, rotation: 0, circuit: 'A', trackClass: 'main' }} selected={false} /></svg>
+                  <svg viewBox="0 0 100 56"><TrackShape track={{ id: '', definitionId: item.id, x: 50, y: 28, rotation: 0, circuit: 'A', trackClass: 'main' }} selected={false} preview /></svg>
                 </span>
                 <span><strong>{item.name}</strong><small>{item.article} · {item.detail}</small></span>
                 <span className="add-symbol">＋</span>
               </button>
             ))}
           </div>
-          <div className="catalog-hint"><strong>Tipp</strong><p>Bauteil wählen und anschließend in die Planfläche tippen. Bereits platzierte Gleise lassen sich ziehen.</p></div>
+          <div className="catalog-hint"><strong>Magnetische Verbindungen</strong><p>Nahe an einem freien Gleisende platzieren oder ziehen – das neue Gleis richtet sich automatisch exakt aus.</p></div>
         </aside>
 
         <section className="workspace">
@@ -321,23 +557,37 @@ function App() {
               <button className={environment === 'indoor' ? 'active' : ''} onClick={() => setEnvironment('indoor')}>⌂ Indoor</button>
             </div>
             <div className="toolbar-divider" />
-            <label>Stromkreis
+            <label className="track-setting">Stromkreis
               <select value={activeCircuit} onChange={(event) => setActiveCircuit(event.target.value)}>
                 {CIRCUITS.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
               </select>
             </label>
-            <label>Gleistyp
+            <label className="track-setting">Gleistyp
               <select value={trackClass} onChange={(event) => setTrackClass(event.target.value as TrackClass)}>
                 <option value="main">Hauptstrecke</option><option value="siding">Abstellgleis</option><option value="station">Bahnhofsgleis</option>
               </select>
             </label>
+            <div className="toolbar-divider" />
+            <label className="dimension-control">Breite
+              <span><input type="number" min={MIN_CANVAS_METERS} max={MAX_CANVAS_METERS} step="0.1" value={canvasInputs.widthMeters} onChange={(event) => setCanvasInputs((inputs) => ({ ...inputs, widthMeters: event.target.value }))} onBlur={() => commitCanvasDimension('widthMeters')} onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur() }} aria-label="Planbreite in Metern" /> m</span>
+            </label>
+            <label className="dimension-control">Höhe
+              <span><input type="number" min={MIN_CANVAS_METERS} max={MAX_CANVAS_METERS} step="0.1" value={canvasInputs.heightMeters} onChange={(event) => setCanvasInputs((inputs) => ({ ...inputs, heightMeters: event.target.value }))} onBlur={() => commitCanvasDimension('heightMeters')} onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur() }} aria-label="Planhöhe in Metern" /> m</span>
+            </label>
+            <div className="zoom-control" aria-label="Zoom">
+              <button type="button" onClick={() => setZoom((value) => clamp(value - ZOOM_STEP, MIN_ZOOM, MAX_ZOOM))} disabled={zoom === MIN_ZOOM} aria-label="Verkleinern">−</button>
+              <button type="button" className="zoom-value" onClick={() => setZoom(100)} title="Auf 100 % zurücksetzen">{zoom}%</button>
+              <button type="button" onClick={() => setZoom((value) => clamp(value + ZOOM_STEP, MIN_ZOOM, MAX_ZOOM))} disabled={zoom === MAX_ZOOM} aria-label="Vergrößern">＋</button>
+            </div>
           </div>
 
           <div className="canvas-wrap">
             <svg
               className={`layout-canvas ${environment}`}
-              viewBox="0 0 1200 750"
-              preserveAspectRatio="none"
+              viewBox={`0 0 ${canvasWidth} ${canvasHeight}`}
+              width={canvasWidth * zoom / 100}
+              height={canvasHeight * zoom / 100}
+              preserveAspectRatio="xMinYMin meet"
               onPointerDown={handleCanvasDown}
               onPointerMove={moveDrag}
               onPointerUp={() => { dragRef.current = null }}
@@ -349,29 +599,34 @@ function App() {
                 <pattern id="largeGrid" width="150" height="150" patternUnits="userSpaceOnUse"><rect width="150" height="150" fill="url(#smallGrid)" /><path d="M 150 0 L 0 0 0 150" fill="none" stroke="currentColor" strokeWidth="1.5" /></pattern>
                 <filter id="patchShadow"><feDropShadow dx="0" dy="3" stdDeviation="5" floodOpacity=".15" /></filter>
               </defs>
-              <rect width="1200" height="750" className="canvas-ground" />
-              {environment === 'indoor' && <g className="room-outline"><rect x="45" y="45" width="1110" height="660" rx="6" /><path d="M 180 45 v100 h-135 M 970 705 v-115 h185" /></g>}
+              <rect width={canvasWidth} height={canvasHeight} className="canvas-ground" />
+              {environment === 'indoor' && (
+                <g className="room-outline">
+                  <rect x="45" y="45" width={roomWidth} height={roomHeight} rx="6" />
+                  <path d={`M ${45 + roomDoorWidth} 45 v${roomDoorDepth} h${-roomDoorWidth} M ${canvasWidth - 45 - roomDoorWidth} ${canvasHeight - 45} v${-roomDoorDepth} h${roomDoorWidth}`} />
+                </g>
+              )}
               {terrain.map((patch) => (
                 <g key={patch.id} transform={`translate(${patch.x} ${patch.y})`} className={`terrain-patch ${patch.kind}`} onDoubleClick={() => setTerrain((items) => items.filter((item) => item.id !== patch.id))}>
                   {patch.kind === 'building' ? <rect x="-55" y="-42" width="110" height="84" rx="7" /> : <ellipse rx={patch.kind === 'water' ? 80 : 62} ry={patch.kind === 'water' ? 40 : 52} />}
                   <text textAnchor="middle" dominantBaseline="central">{TERRAIN.find((item) => item.id === patch.kind)?.icon}</text>
                 </g>
               ))}
-              <rect width="1200" height="750" fill="url(#largeGrid)" className="grid" />
+              <rect width={canvasWidth} height={canvasHeight} fill="url(#largeGrid)" className="grid" />
               {tracks.map((track) => (
                 <g key={track.id} data-track="" onPointerDown={(event) => startDrag(event, track)} className={`placed-track ${track.trackClass}`}>
-                  <TrackShape track={track} selected={selectedId === track.id} />
+                  <TrackShape track={track} selected={selectedId === track.id} connected={connectedIndexes.get(track.id) ?? NO_CONNECTIONS} />
                 </g>
               ))}
               {tracks.length === 0 && terrain.length === 0 && (
-                <g className="empty-state" transform="translate(600 340)">
+                <g className="empty-state" transform={`translate(${canvasWidth / 2} ${canvasHeight / 2 - 35})`}>
                   <circle r="54" /><text y="8">⌁</text>
                   <text className="empty-title" y="92">Deine Anlage beginnt hier</text>
                   <text className="empty-copy" y="124">Wähle links ein Gleis oder unten ein Geländewerkzeug.</text>
                 </g>
               )}
             </svg>
-            <div className="scale"><span /> 1 m</div>
+            <div className="scale"><span style={{ width: `${UNITS_PER_METER * zoom / 100}px` }} /> 1 m</div>
             <div className="status-pill">{tracks.length} Gleise · {terrain.length} Geländeelemente</div>
           </div>
 
@@ -390,8 +645,8 @@ function App() {
           {selected && (
             <div className="selection-panel">
               <div><small>Auswahl</small><strong>{TRACKS.find((item) => item.id === selected.definitionId)?.name}</strong></div>
-              <button onClick={() => updateSelected({ rotation: ((selected.rotation - 15) % 360 + 360) % 360 })}>↶ <span>Drehen</span></button>
-              <button onClick={() => updateSelected({ rotation: (selected.rotation + 15) % 360 })}>↷ <span>Drehen</span></button>
+              <button onClick={() => updateSelected({ rotation: normalizeAngle(selected.rotation - ROTATION_STEP) })}>↶ <span>Drehen</span></button>
+              <button onClick={() => updateSelected({ rotation: normalizeAngle(selected.rotation + ROTATION_STEP) })}>↷ <span>Drehen</span></button>
               <label><span>Stromkreis</span><select value={selected.circuit} onChange={(event) => updateSelected({ circuit: event.target.value })}>{CIRCUITS.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
               <label><span>Kennzeichnung</span><select value={selected.trackClass} onChange={(event) => updateSelected({ trackClass: event.target.value as TrackClass })}><option value="main">Hauptstrecke</option><option value="siding">Abstellgleis</option><option value="station">Bahnhofsgleis</option></select></label>
               <button className="delete-button" onClick={() => { setTracks((items) => items.filter((item) => item.id !== selected.id)); setSelectedId(null) }}>⌫ <span>Löschen</span></button>
