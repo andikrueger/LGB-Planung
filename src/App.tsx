@@ -361,6 +361,10 @@ function App() {
   }))
   const [zoom, setZoom] = useState(100)
   const dragRef = useRef<{ id: string; dx: number; dy: number } | null>(null)
+  const canvasWrapRef = useRef<HTMLDivElement>(null)
+  const touchPointersRef = useRef(new Map<number, { x: number; y: number; startX: number; startY: number; moved: boolean; startedOnTrack: boolean }>())
+  const pinchRef = useRef<{ distance: number; zoom: number; scrollLeft: number; scrollTop: number; focalX: number; focalY: number } | null>(null)
+  const hadPinchRef = useRef(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const canvasWidth = canvasSize.widthMeters * UNITS_PER_METER
   const canvasHeight = canvasSize.heightMeters * UNITS_PER_METER
@@ -383,9 +387,9 @@ function App() {
     return toCanvasPoint(event.currentTarget, event.clientX, event.clientY)
   }
 
-  const handleCanvasDown = (event: React.PointerEvent<SVGSVGElement>) => {
-    if ((event.target as Element).closest('[data-track]')) return
-    const point = canvasPoint(event)
+  const useCanvasTool = (svg: SVGSVGElement, target: EventTarget, clientX: number, clientY: number) => {
+    if ((target as Element).closest('[data-track]')) return
+    const point = toCanvasPoint(svg, clientX, clientY)
     if (!point) return
     setSelectedId(null)
     if (terrainBrush) {
@@ -411,8 +415,80 @@ function App() {
     }
   }
 
+  const handleCanvasDown = (event: React.PointerEvent<SVGSVGElement>) => {
+    if (event.pointerType === 'touch') return
+    useCanvasTool(event.currentTarget, event.target, event.clientX, event.clientY)
+  }
+
+  const handleTouchDown = (event: React.PointerEvent<SVGSVGElement>) => {
+    if (event.pointerType !== 'touch') return
+    const pointers = touchPointersRef.current
+    pointers.set(event.pointerId, {
+      x: event.clientX,
+      y: event.clientY,
+      startX: event.clientX,
+      startY: event.clientY,
+      moved: false,
+      startedOnTrack: Boolean((event.target as Element).closest('[data-track]')),
+    })
+    if (pointers.size !== 2) return
+
+    const [first, second] = [...pointers.values()]
+    const wrap = canvasWrapRef.current
+    if (!wrap) return
+    const bounds = wrap.getBoundingClientRect()
+    const midpointX = (first.x + second.x) / 2 - bounds.left
+    const midpointY = (first.y + second.y) / 2 - bounds.top
+    pinchRef.current = {
+      distance: Math.hypot(second.x - first.x, second.y - first.y),
+      zoom,
+      scrollLeft: wrap.scrollLeft,
+      scrollTop: wrap.scrollTop,
+      focalX: midpointX,
+      focalY: midpointY,
+    }
+    hadPinchRef.current = true
+    dragRef.current = null
+  }
+
+  const handleTouchMove = (event: React.PointerEvent<SVGSVGElement>) => {
+    if (event.pointerType !== 'touch') return
+    const pointer = touchPointersRef.current.get(event.pointerId)
+    if (!pointer) return
+    pointer.x = event.clientX
+    pointer.y = event.clientY
+    pointer.moved ||= Math.hypot(pointer.x - pointer.startX, pointer.y - pointer.startY) > 6
+
+    const pinch = pinchRef.current
+    if (!pinch || touchPointersRef.current.size < 2) return
+    const [first, second] = [...touchPointersRef.current.values()]
+    const distance = Math.hypot(second.x - first.x, second.y - first.y)
+    const nextZoom = clamp(Math.round(pinch.zoom * distance / pinch.distance), MIN_ZOOM, MAX_ZOOM)
+    setZoom(nextZoom)
+    requestAnimationFrame(() => {
+      const wrap = canvasWrapRef.current
+      if (!wrap) return
+      const ratio = nextZoom / pinch.zoom
+      wrap.scrollLeft = (pinch.scrollLeft + pinch.focalX) * ratio - pinch.focalX
+      wrap.scrollTop = (pinch.scrollTop + pinch.focalY) * ratio - pinch.focalY
+    })
+  }
+
+  const handleTouchEnd = (event: React.PointerEvent<SVGSVGElement>, cancelled = false) => {
+    if (event.pointerType !== 'touch') return
+    const pointers = touchPointersRef.current
+    const pointer = pointers.get(event.pointerId)
+    if (!cancelled && pointers.size === 1 && !hadPinchRef.current && pointer && !pointer.moved && !pointer.startedOnTrack) {
+      useCanvasTool(event.currentTarget, event.target, event.clientX, event.clientY)
+    }
+    pointers.delete(event.pointerId)
+    if (pointers.size < 2) pinchRef.current = null
+    if (pointers.size === 0) hadPinchRef.current = false
+  }
+
   const startDrag = (event: React.PointerEvent<SVGGElement>, track: PlacedTrack) => {
     event.stopPropagation()
+    if (event.pointerType === 'touch' && touchPointersRef.current.size > 1) return
     const svg = event.currentTarget.ownerSVGElement
     if (!svg) return
     const point = toCanvasPoint(svg, event.clientX, event.clientY)
@@ -581,13 +657,17 @@ function App() {
             </div>
           </div>
 
-          <div className="canvas-wrap">
+          <div className="canvas-wrap" ref={canvasWrapRef}>
             <svg
               className={`layout-canvas ${environment}`}
               viewBox={`0 0 ${canvasWidth} ${canvasHeight}`}
               width={canvasWidth * zoom / 100}
               height={canvasHeight * zoom / 100}
               preserveAspectRatio="xMinYMin meet"
+              onPointerDownCapture={handleTouchDown}
+              onPointerMoveCapture={handleTouchMove}
+              onPointerUpCapture={handleTouchEnd}
+              onPointerCancelCapture={(event) => handleTouchEnd(event, true)}
               onPointerDown={handleCanvasDown}
               onPointerMove={moveDrag}
               onPointerUp={() => { dragRef.current = null }}
