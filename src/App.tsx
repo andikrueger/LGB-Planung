@@ -129,12 +129,11 @@ const getTrackGeometry = (definition: TrackDefinition): TrackGeometry => {
     const angle = definition.angleDeg ?? 0
     const halfAngle = toRadians(angle / 2)
     const x = radius * Math.sin(halfAngle)
-    const sagitta = radius * (1 - Math.cos(halfAngle))
     return {
-      paths: [`M ${-x} ${sagitta / 2} A ${radius} ${radius} 0 0 1 ${x} ${sagitta / 2}`],
+      paths: [`M ${-x} 0 A ${radius} ${radius} 0 0 1 ${x} 0`],
       connections: [
-        { x: -x, y: sagitta / 2, angle: 180 - angle / 2 },
-        { x, y: sagitta / 2, angle: angle / 2 },
+        { x: -x, y: 0, angle: 180 - angle / 2 },
+        { x, y: 0, angle: angle / 2 },
       ],
     }
   }
@@ -200,9 +199,24 @@ const distance = (a: { x: number; y: number }, b: { x: number; y: number }) => M
 
 const getOpenConnections = (tracks: PlacedTrack[], excludedId?: string) => {
   const connections = tracks.filter((track) => track.id !== excludedId).flatMap(getWorldConnections)
-  return connections.filter((connection) => !connections.some((other) =>
-    other.trackId !== connection.trackId && distance(connection, other) < CONNECTION_EPSILON
-  ))
+  const buckets = new Map<string, typeof connections>()
+  const coordinate = (value: number) => Math.floor(value / CONNECTION_EPSILON)
+  const key = (x: number, y: number) => `${x}:${y}`
+  connections.forEach((connection) => {
+    const bucketKey = key(coordinate(connection.x), coordinate(connection.y))
+    buckets.set(bucketKey, [...(buckets.get(bucketKey) ?? []), connection])
+  })
+  return connections.filter((connection) => {
+    const x = coordinate(connection.x)
+    const y = coordinate(connection.y)
+    for (let offsetX = -1; offsetX <= 1; offsetX += 1) {
+      for (let offsetY = -1; offsetY <= 1; offsetY += 1) {
+        const nearby = buckets.get(key(x + offsetX, y + offsetY)) ?? []
+        if (nearby.some((other) => other.trackId !== connection.trackId && distance(connection, other) < CONNECTION_EPSILON)) return false
+      }
+    }
+    return true
+  })
 }
 
 const alignConnection = (track: PlacedTrack, source: TrackConnection, target: TrackConnection) => {
@@ -453,6 +467,7 @@ function App() {
       try {
         const data = JSON.parse(String(reader.result))
         if (!Array.isArray(data.tracks) || !Array.isArray(data.terrain)) throw new Error()
+        if (data.version !== undefined && data.version !== 1 && data.version !== 2) throw new Error()
         setTracks(data.tracks)
         setTerrain(data.terrain)
         setProjectName(data.projectName || 'Importierter Plan')
