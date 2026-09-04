@@ -110,7 +110,7 @@ select { border: 1px solid #d8d9d3; border-radius: 7px; background: white; paddi
 .empty-title { font: 700 24px 'Fraunces', serif; fill: #36533e; }
 .empty-copy { font-size: 13px; fill: #647369; }
 .scale { position: absolute; right: 18px; bottom: 15px; font-size: 10px; color: #4d5d53; background: #ffffffb8; padding: 7px 9px; border-radius: 6px; }
-.scale span { width: 150px; border-top: 2px solid #405447; display: inline-block; margin-right: 6px; vertical-align: middle; }
+.scale span { border-top: 2px solid #405447; display: inline-block; margin-right: 6px; vertical-align: middle; }
 .status-pill { position: absolute; left: 16px; bottom: 15px; padding: 7px 10px; background: #173c2cda; color: white; border-radius: 15px; font-size: 10px; }
 .bottom-tools { min-height: 86px; background: #fbfaf7; border-top: 1px solid var(--line); display: flex; align-items: center; padding: 9px 17px; gap: 14px; }
 .terrain-tools { display: flex; align-items: center; gap: 7px; flex: 1; }

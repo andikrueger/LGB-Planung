@@ -293,7 +293,9 @@ function App() {
             widthMeters: clamp(Number(data.canvas.widthMeters) || DEFAULT_CANVAS.widthMeters, MIN_CANVAS_METERS, MAX_CANVAS_METERS),
             heightMeters: clamp(Number(data.canvas.heightMeters) || DEFAULT_CANVAS.heightMeters, MIN_CANVAS_METERS, MAX_CANVAS_METERS),
           })
-        } else setCanvasSize(DEFAULT_CANVAS)
+        } else {
+          setCanvasSize(DEFAULT_CANVAS)
+        }
       } catch {
         window.alert('Diese Datei ist kein gültiger LGB-Plan.')
       }
