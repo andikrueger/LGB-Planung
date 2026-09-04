@@ -163,7 +163,6 @@ select { border: 1px solid #d8d9d3; border-radius: 7px; background: white; paddi
   .save-button span { display: none; }
   .mode-switch button { padding: 7px 9px; }
   .workspace-toolbar .track-setting { display: none; }
-  .dimension-control { gap: 4px !important; }
   .dimension-control input { width: 52px; }
   .canvas-wrap { min-height: 340px; }
   .terrain-tools > span { display: none; }

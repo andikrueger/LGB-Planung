@@ -191,6 +191,8 @@ function App() {
   const fileRef = useRef<HTMLInputElement>(null)
   const canvasWidth = canvasSize.widthMeters * UNITS_PER_METER
   const canvasHeight = canvasSize.heightMeters * UNITS_PER_METER
+  const roomWidth = Math.max(0, canvasWidth - 90)
+  const roomHeight = Math.max(0, canvasHeight - 90)
 
   useEffect(() => {
     localStorage.setItem('lgb-tracks', JSON.stringify(tracks))
@@ -289,7 +291,7 @@ function App() {
             widthMeters: clamp(Number(data.canvas.widthMeters) || DEFAULT_CANVAS.widthMeters, MIN_CANVAS_METERS, MAX_CANVAS_METERS),
             heightMeters: clamp(Number(data.canvas.heightMeters) || DEFAULT_CANVAS.heightMeters, MIN_CANVAS_METERS, MAX_CANVAS_METERS),
           })
-        }
+        } else setCanvasSize(DEFAULT_CANVAS)
       } catch {
         window.alert('Diese Datei ist kein gültiger LGB-Plan.')
       }
@@ -399,7 +401,12 @@ function App() {
                 <filter id="patchShadow"><feDropShadow dx="0" dy="3" stdDeviation="5" floodOpacity=".15" /></filter>
               </defs>
               <rect width={canvasWidth} height={canvasHeight} className="canvas-ground" />
-              {environment === 'indoor' && <g className="room-outline"><rect x="45" y="45" width={Math.max(0, canvasWidth - 90)} height={Math.max(0, canvasHeight - 90)} rx="6" /></g>}
+              {environment === 'indoor' && (
+                <g className="room-outline">
+                  <rect x="45" y="45" width={roomWidth} height={roomHeight} rx="6" />
+                  <path d={`M ${45 + Math.min(135, roomWidth)} 45 v${Math.min(100, roomHeight)} h${-Math.min(135, roomWidth)} M ${canvasWidth - 45 - Math.min(185, roomWidth)} ${canvasHeight - 45} v${-Math.min(115, roomHeight)} h${Math.min(185, roomWidth)}`} />
+                </g>
+              )}
               {terrain.map((patch) => (
                 <g key={patch.id} transform={`translate(${patch.x} ${patch.y})`} className={`terrain-patch ${patch.kind}`} onDoubleClick={() => setTerrain((items) => items.filter((item) => item.id !== patch.id))}>
                   {patch.kind === 'building' ? <rect x="-55" y="-42" width="110" height="84" rx="7" /> : <ellipse rx={patch.kind === 'water' ? 80 : 62} ry={patch.kind === 'water' ? 40 : 52} />}
