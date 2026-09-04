@@ -113,6 +113,7 @@ const MILLIMETERS_TO_UNITS = UNITS_PER_METER / 1000
 const SNAP_DISTANCE = 15
 const CONNECTION_TOLERANCE_UNITS = 1
 const ROTATION_STEP = 7.5
+const NO_CONNECTIONS = new Set<number>()
 
 const uid = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`
 const clamp = (value: number, minimum: number, maximum: number) => Math.min(maximum, Math.max(minimum, value))
@@ -204,7 +205,9 @@ const getOpenConnections = (otherTracks: PlacedTrack[], excludedId?: string) => 
   const key = (x: number, y: number) => `${x}:${y}`
   connections.forEach((connection) => {
     const bucketKey = key(coordinate(connection.x), coordinate(connection.y))
-    buckets.set(bucketKey, [...(buckets.get(bucketKey) ?? []), connection])
+    const bucket = buckets.get(bucketKey) ?? []
+    bucket.push(connection)
+    buckets.set(bucketKey, bucket)
   })
   return connections.filter((connection) => {
     const x = coordinate(connection.x)
@@ -256,7 +259,9 @@ const getConnectedIndexes = (tracks: PlacedTrack[]) => {
     const x = bucketCoordinate(connection.x)
     const y = bucketCoordinate(connection.y)
     const key = bucketKey(x, y)
-    buckets.set(key, [...(buckets.get(key) ?? []), connection])
+    const bucket = buckets.get(key) ?? []
+    bucket.push(connection)
+    buckets.set(key, bucket)
   })
 
   connections.forEach((connection) => {
@@ -300,7 +305,7 @@ const loadCanvasSize = () => {
   }
 }
 
-function TrackShape({ track, selected, preview = false, connected = new Set<number>() }: { track: PlacedTrack; selected: boolean; preview?: boolean; connected?: Set<number> }) {
+function TrackShape({ track, selected, preview = false, connected = NO_CONNECTIONS }: { track: PlacedTrack; selected: boolean; preview?: boolean; connected?: Set<number> }) {
   const definition = TRACKS.find((item) => item.id === track.definitionId) ?? TRACKS[0]
   const circuit = CIRCUITS.find((item) => item.id === track.circuit) ?? CIRCUITS[0]
   const rail = circuit.color
@@ -610,7 +615,7 @@ function App() {
               <rect width={canvasWidth} height={canvasHeight} fill="url(#largeGrid)" className="grid" />
               {tracks.map((track) => (
                 <g key={track.id} data-track="" onPointerDown={(event) => startDrag(event, track)} className={`placed-track ${track.trackClass}`}>
-                  <TrackShape track={track} selected={selectedId === track.id} connected={connectedIndexes.get(track.id)} />
+                  <TrackShape track={track} selected={selectedId === track.id} connected={connectedIndexes.get(track.id) ?? NO_CONNECTIONS} />
                 </g>
               ))}
               {tracks.length === 0 && terrain.length === 0 && (
