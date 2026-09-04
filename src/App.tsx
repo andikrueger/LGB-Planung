@@ -215,7 +215,6 @@ function App() {
 
   const selected = tracks.find((item) => item.id === selectedId)
   const filteredTracks = TRACKS.filter((item) => {
-    if (catalogFilter === 'track') return item.kind === 'straight' || item.kind === 'curve'
     const matchesCategory =
       catalogFilter === 'track' ? item.kind === 'straight' || item.kind === 'curve'
         : catalogFilter === 'switch' ? item.kind.includes('switch')
