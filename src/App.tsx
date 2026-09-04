@@ -31,6 +31,11 @@ type TerrainPatch = {
   kind: TerrainKind
 }
 
+type CanvasSize = {
+  widthMeters: number
+  heightMeters: number
+}
+
 const TRACKS: TrackDefinition[] = [
   { id: 'g41', article: '10040', name: 'Gerades Gleis', detail: '41 mm', kind: 'straight', size: 38 },
   { id: 'g52', article: '10050', name: 'Gerades Gleis', detail: '52 mm', kind: 'straight', size: 42 },
@@ -103,6 +108,14 @@ const ZOOM_STEP = 25
 const uid = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`
 const clamp = (value: number, minimum: number, maximum: number) => Math.min(maximum, Math.max(minimum, value))
 
+const normalizeCanvasSize = (value: unknown): CanvasSize => {
+  const size = value && typeof value === 'object' ? value as Partial<CanvasSize> : {}
+  return {
+    widthMeters: clamp(Number(size.widthMeters) || DEFAULT_CANVAS.widthMeters, MIN_CANVAS_METERS, MAX_CANVAS_METERS),
+    heightMeters: clamp(Number(size.heightMeters) || DEFAULT_CANVAS.heightMeters, MIN_CANVAS_METERS, MAX_CANVAS_METERS),
+  }
+}
+
 const toCanvasPoint = (svg: SVGSVGElement, clientX: number, clientY: number) => {
   const matrix = svg.getScreenCTM()
   if (!matrix) return null
@@ -114,11 +127,7 @@ const toCanvasPoint = (svg: SVGSVGElement, clientX: number, clientY: number) => 
 
 const loadCanvasSize = () => {
   try {
-    const saved = JSON.parse(localStorage.getItem('lgb-canvas') || '{}')
-    return {
-      widthMeters: clamp(Number(saved.widthMeters) || DEFAULT_CANVAS.widthMeters, MIN_CANVAS_METERS, MAX_CANVAS_METERS),
-      heightMeters: clamp(Number(saved.heightMeters) || DEFAULT_CANVAS.heightMeters, MIN_CANVAS_METERS, MAX_CANVAS_METERS),
-    }
+    return normalizeCanvasSize(JSON.parse(localStorage.getItem('lgb-canvas') || '{}'))
   } catch {
     return DEFAULT_CANVAS
   }
@@ -195,6 +204,10 @@ function App() {
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [projectName, setProjectName] = useState('Meine Gartenbahn')
   const [canvasSize, setCanvasSize] = useState(loadCanvasSize)
+  const [canvasInputs, setCanvasInputs] = useState(() => ({
+    widthMeters: String(canvasSize.widthMeters),
+    heightMeters: String(canvasSize.heightMeters),
+  }))
   const [zoom, setZoom] = useState(100)
   const dragRef = useRef<{ id: string; dx: number; dy: number } | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
@@ -255,6 +268,12 @@ function App() {
     setTracks((items) => items.map((item) => item.id === selectedId ? { ...item, ...change } : item))
   }
 
+  const commitCanvasDimension = (dimension: keyof CanvasSize) => {
+    const value = clamp(Number(canvasInputs[dimension]) || canvasSize[dimension], MIN_CANVAS_METERS, MAX_CANVAS_METERS)
+    setCanvasSize((size) => ({ ...size, [dimension]: value }))
+    setCanvasInputs((inputs) => ({ ...inputs, [dimension]: String(value) }))
+  }
+
   const selected = tracks.find((item) => item.id === selectedId)
   const filteredTracks = TRACKS.filter((item) => {
     const matchesCategory =
@@ -297,14 +316,12 @@ function App() {
         setTerrain(data.terrain)
         setProjectName(data.projectName || 'Importierter Plan')
         setEnvironment(data.environment === 'indoor' ? 'indoor' : 'outdoor')
-        if (data.canvas) {
-          setCanvasSize({
-            widthMeters: clamp(Number(data.canvas.widthMeters) || DEFAULT_CANVAS.widthMeters, MIN_CANVAS_METERS, MAX_CANVAS_METERS),
-            heightMeters: clamp(Number(data.canvas.heightMeters) || DEFAULT_CANVAS.heightMeters, MIN_CANVAS_METERS, MAX_CANVAS_METERS),
-          })
-        } else {
-          setCanvasSize(DEFAULT_CANVAS)
-        }
+        const importedCanvasSize = normalizeCanvasSize(data.canvas)
+        setCanvasSize(importedCanvasSize)
+        setCanvasInputs({
+          widthMeters: String(importedCanvasSize.widthMeters),
+          heightMeters: String(importedCanvasSize.heightMeters),
+        })
       } catch {
         window.alert('Diese Datei ist kein gültiger LGB-Plan.')
       }
@@ -383,10 +400,10 @@ function App() {
             </label>
             <div className="toolbar-divider" />
             <label className="dimension-control">Breite
-              <span><input type="number" min={MIN_CANVAS_METERS} max={MAX_CANVAS_METERS} step="0.1" value={canvasSize.widthMeters} onChange={(event) => setCanvasSize((size) => ({ ...size, widthMeters: clamp(Number(event.target.value) || MIN_CANVAS_METERS, MIN_CANVAS_METERS, MAX_CANVAS_METERS) }))} aria-label="Planbreite in Metern" /> m</span>
+              <span><input type="number" min={MIN_CANVAS_METERS} max={MAX_CANVAS_METERS} step="0.1" value={canvasInputs.widthMeters} onChange={(event) => setCanvasInputs((inputs) => ({ ...inputs, widthMeters: event.target.value }))} onBlur={() => commitCanvasDimension('widthMeters')} onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur() }} aria-label="Planbreite in Metern" /> m</span>
             </label>
             <label className="dimension-control">Höhe
-              <span><input type="number" min={MIN_CANVAS_METERS} max={MAX_CANVAS_METERS} step="0.1" value={canvasSize.heightMeters} onChange={(event) => setCanvasSize((size) => ({ ...size, heightMeters: clamp(Number(event.target.value) || MIN_CANVAS_METERS, MIN_CANVAS_METERS, MAX_CANVAS_METERS) }))} aria-label="Planhöhe in Metern" /> m</span>
+              <span><input type="number" min={MIN_CANVAS_METERS} max={MAX_CANVAS_METERS} step="0.1" value={canvasInputs.heightMeters} onChange={(event) => setCanvasInputs((inputs) => ({ ...inputs, heightMeters: event.target.value }))} onBlur={() => commitCanvasDimension('heightMeters')} onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur() }} aria-label="Planhöhe in Metern" /> m</span>
             </label>
             <div className="zoom-control" aria-label="Zoom">
               <button type="button" onClick={() => setZoom((value) => clamp(value - ZOOM_STEP, MIN_ZOOM, MAX_ZOOM))} disabled={zoom === MIN_ZOOM} aria-label="Verkleinern">−</button>
