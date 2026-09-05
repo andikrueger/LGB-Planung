@@ -510,6 +510,7 @@ function App() {
   const hadPinchRef = useRef(false)
   const zoomFrameRef = useRef<number | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+  const plannerButtonRef = useRef<HTMLButtonElement>(null)
   const canvasWidth = canvasSize.widthMeters * UNITS_PER_METER
   const canvasHeight = canvasSize.heightMeters * UNITS_PER_METER
   const roomWidth = Math.max(0, canvasWidth - 90)
@@ -521,8 +522,8 @@ function App() {
     counts[track.definitionId] = (counts[track.definitionId] ?? 0) + 1
     return counts
   }, {}), [tracks])
-  const inventoryShortages = TRACKS.filter((track) =>
-    track.id in inventory && (usedInventory[track.id] ?? 0) > inventory[track.id])
+  const inventoryShortages = useMemo(() => TRACKS.filter((track) =>
+    track.id in inventory && (usedInventory[track.id] ?? 0) > inventory[track.id]), [inventory, usedInventory])
 
   useEffect(() => {
     localStorage.setItem('lgb-tracks', JSON.stringify(tracks))
@@ -709,7 +710,12 @@ function App() {
     setSelectedId(null)
     setPlannerNotice(result.message)
     setPlannerMessage('')
+    closePlanner()
+  }
+
+  const closePlanner = () => {
     setPlannerOpen(false)
+    requestAnimationFrame(() => plannerButtonRef.current?.focus())
   }
 
   const exportProject = () => {
@@ -856,7 +862,7 @@ function App() {
         <section className="workspace">
           <div className="workspace-toolbar">
             <button className="mobile-catalog" onClick={() => setSidebarOpen(true)}>☰ <span>Gleise</span></button>
-            <button className="planner-button" onClick={() => { setPlannerMessage(''); setPlannerOpen(true) }}>✦ Auto-Plan</button>
+            <button ref={plannerButtonRef} className="planner-button" onClick={() => { setPlannerMessage(''); setPlannerOpen(true) }}>✦ Auto-Plan</button>
             <div className="mode-switch">
               <button className={environment === 'outdoor' ? 'active' : ''} onClick={() => setEnvironment('outdoor')}>☀ Outdoor</button>
               <button className={environment === 'indoor' ? 'active' : ''} onClick={() => setEnvironment('indoor')}>⌂ Indoor</button>
@@ -964,13 +970,13 @@ function App() {
         </section>
       </main>
       {plannerOpen && (
-        <div className="modal-backdrop" role="presentation" onClick={() => setPlannerOpen(false)}>
-          <section className="planner-modal" role="dialog" aria-modal="true" aria-labelledby="planner-title" onClick={(event) => event.stopPropagation()}>
+        <div className="modal-backdrop" role="presentation" onClick={closePlanner}>
+          <section className="planner-modal" role="dialog" aria-modal="true" aria-labelledby="planner-title" onClick={(event) => event.stopPropagation()} onKeyDown={(event) => { if (event.key === 'Escape') closePlanner() }}>
             <span className="eyebrow">Automatischer Planungsmodus</span>
             <h2 id="planner-title">Anlage entwerfen</h2>
             <p>Erstellt eine geschlossene Hauptstrecke, berücksichtigt die Planfläche und sucht eine Position mit möglichst wenigen Geländekonflikten.</p>
             <label>Geraden je Längsseite
-              <input type="number" min="1" max="8" value={plannerOptions.straightSections} onChange={(event) => setPlannerOptions((options) => ({ ...options, straightSections: clamp(Number(event.target.value) || 1, 1, 8) }))} />
+              <input autoFocus type="number" min="1" max="8" value={plannerOptions.straightSections} onChange={(event) => setPlannerOptions((options) => ({ ...options, straightSections: clamp(Number(event.target.value) || 1, 1, 8) }))} />
             </label>
             <label>Bahnhofsgleise
               <input type="number" min="0" max="4" value={plannerOptions.stationTracks} onChange={(event) => setPlannerOptions((options) => ({ ...options, stationTracks: clamp(Number(event.target.value) || 0, 0, 4) }))} />
@@ -980,7 +986,7 @@ function App() {
             </label>
             {plannerMessage && <div className="planner-message" role="status">{plannerMessage}</div>}
             <div className="modal-actions">
-              <button onClick={() => setPlannerOpen(false)}>Abbrechen</button>
+              <button onClick={closePlanner}>Abbrechen</button>
               <button className="primary" onClick={createAutomaticPlan}>Plan erstellen</button>
             </div>
           </section>
