@@ -345,7 +345,7 @@ const generateAutomaticLayout = (
     const definition = TRACKS.find((track) => track.id === id)
     return [`${definition?.article ?? id}: ${count - inventory[id]} fehlen`]
   })
-  if (shortages.length) return { tracks: [], message: `Bestand reicht nicht aus: ${shortages.join(', ')}` }
+  if (shortages.length) return { success: false as const, message: `Bestand reicht nicht aus: ${shortages.join(', ')}` }
 
   const points = generated.flatMap((track) => [{ x: track.x, y: track.y }, ...getWorldConnections(track)])
   const minX = Math.min(...points.map((point) => point.x))
@@ -358,14 +358,15 @@ const generateAutomaticLayout = (
   const availableX = canvasWidth - (maxX - minX) - margin * 2
   const availableY = canvasHeight - (maxY - minY) - margin * 2
   if (availableX < 0 || availableY < 0) {
-    return { tracks: [], message: 'Die gewünschte Anlage passt nicht auf die aktuelle Planfläche.' }
+    return { success: false as const, message: 'Die gewünschte Anlage passt nicht auf die aktuelle Planfläche.' }
   }
 
   let best = { x: margin - minX + availableX / 2, y: margin - minY + availableY / 2, conflicts: Infinity }
+  const placementDivisor = Math.max(PLACEMENT_GRID_STEPS - 1, 1)
   for (let column = 0; column < PLACEMENT_GRID_STEPS; column += 1) {
     for (let row = 0; row < PLACEMENT_GRID_STEPS; row += 1) {
-      const x = margin - minX + availableX * column / (PLACEMENT_GRID_STEPS - 1)
-      const y = margin - minY + availableY * row / (PLACEMENT_GRID_STEPS - 1)
+      const x = margin - minX + availableX * column / placementDivisor
+      const y = margin - minY + availableY * row / placementDivisor
       const conflicts = generated.reduce((sum, track) => sum + terrain.filter((patch) =>
         distance({ x: track.x + x, y: track.y + y }, patch) < (patch.kind === 'building' ? 100 : 80)).length, 0)
       if (conflicts < best.conflicts) best = { x, y, conflicts }
@@ -373,6 +374,7 @@ const generateAutomaticLayout = (
   }
 
   return {
+    success: true as const,
     tracks: generated.map((track) => ({ ...track, x: track.x + best.x, y: track.y + best.y })),
     message: best.conflicts > 0
       ? `Plan erstellt. ${best.conflicts} Geländekonflikte konnten nicht vermieden werden.`
@@ -699,7 +701,7 @@ function App() {
   const createAutomaticPlan = () => {
     if (tracks.length > 0 && !window.confirm('Der automatische Plan ersetzt die aktuell verlegten Gleise. Fortfahren?')) return
     const result = generateAutomaticLayout(plannerOptions, canvasSize, terrain, inventory)
-    if (!result.tracks.length) {
+    if (!result.success) {
       setPlannerMessage(result.message)
       return
     }
@@ -962,8 +964,8 @@ function App() {
         </section>
       </main>
       {plannerOpen && (
-        <div className="modal-backdrop" role="presentation" onMouseDown={() => setPlannerOpen(false)}>
-          <section className="planner-modal" role="dialog" aria-modal="true" aria-labelledby="planner-title" onMouseDown={(event) => event.stopPropagation()}>
+        <div className="modal-backdrop" role="presentation" onClick={() => setPlannerOpen(false)}>
+          <section className="planner-modal" role="dialog" aria-modal="true" aria-labelledby="planner-title" onClick={(event) => event.stopPropagation()}>
             <span className="eyebrow">Automatischer Planungsmodus</span>
             <h2 id="planner-title">Anlage entwerfen</h2>
             <p>Erstellt eine geschlossene Hauptstrecke, berücksichtigt die Planfläche und sucht eine Position mit möglichst wenigen Geländekonflikten.</p>
