@@ -41,6 +41,14 @@ type CanvasSize = {
   heightMeters: number
 }
 
+type TrackInventory = Record<string, number>
+
+type PlannerOptions = {
+  straightSections: number
+  sidings: number
+  stationTracks: number
+}
+
 const TRACKS: TrackDefinition[] = [
   { id: 'g41', article: '10040', name: 'Gerades Gleis', detail: '41 mm', kind: 'straight', lengthMm: 41 },
   { id: 'g52', article: '10050', name: 'Gerades Gleis', detail: '52 mm', kind: 'straight', lengthMm: 52 },
@@ -113,6 +121,8 @@ const MILLIMETERS_TO_UNITS = UNITS_PER_METER / 1000
 const SNAP_DISTANCE = 15
 const CONNECTION_TOLERANCE_UNITS = 1
 const ROTATION_STEP = 7.5
+const OVAL_CURVES_PER_END = 6
+const PLACEMENT_GRID_STEPS = 5
 const NO_CONNECTIONS = new Set<number>()
 
 const uid = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`
@@ -247,6 +257,132 @@ const snapTrack = (track: PlacedTrack, otherTracks: PlacedTrack[]) => {
   return best ? alignConnection(track, best.source, best.target) : track
 }
 
+const normalizeInventory = (value: unknown): TrackInventory => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+  return Object.fromEntries(Object.entries(value).flatMap(([id, count]) => {
+    const definitionExists = TRACKS.some((track) => track.id === id)
+    const normalized = Number(count)
+    return definitionExists && Number.isFinite(normalized)
+      ? [[id, clamp(Math.floor(normalized), 0, 999)]]
+      : []
+  }))
+}
+
+const generateAutomaticLayout = (
+  options: PlannerOptions,
+  canvasSize: CanvasSize,
+  terrain: TerrainPatch[],
+  inventory: TrackInventory,
+) => {
+  const branchCount = options.sidings + options.stationTracks
+  const straightSections = Math.max(options.straightSections, branchCount)
+  const sequence: { definitionId: string; trackClass: TrackClass; branchClass?: TrackClass }[] = []
+
+  for (let index = 0; index < straightSections; index += 1) {
+    if (index < branchCount) {
+      sequence.push({
+        definitionId: 'wl-r1',
+        trackClass: 'main',
+        branchClass: index < options.stationTracks ? 'station' : 'siding',
+      })
+      sequence.push({ definitionId: 'g300', trackClass: 'main' })
+    } else {
+      sequence.push({ definitionId: 'g600', trackClass: 'main' })
+    }
+  }
+  for (let index = 0; index < OVAL_CURVES_PER_END; index += 1) sequence.push({ definitionId: 'r1', trackClass: 'main' })
+  for (let index = 0; index < straightSections; index += 1) sequence.push({ definitionId: 'g600', trackClass: 'main' })
+  for (let index = 0; index < OVAL_CURVES_PER_END; index += 1) sequence.push({ definitionId: 'r1', trackClass: 'main' })
+
+  const generated: PlacedTrack[] = []
+  const switches: { track: PlacedTrack; trackClass: TrackClass }[] = []
+  sequence.forEach((item, index) => {
+    const definition = TRACKS.find((track) => track.id === item.definitionId) ?? TRACKS[0]
+    let track: PlacedTrack = {
+      id: uid(),
+      definitionId: item.definitionId,
+      x: 0,
+      y: 0,
+      rotation: 0,
+      circuit: 'A',
+      trackClass: item.trackClass,
+    }
+    if (index === 0) {
+      track.x = toUnits(definition.lengthMm) / 2
+    } else {
+      const previous = generated[index - 1]
+      const target = getWorldConnections(previous)[1]
+      track = alignConnection(track, getTrackGeometry(definition).connections[0], target)
+    }
+    generated.push(track)
+    if (item.branchClass) switches.push({ track, trackClass: item.branchClass })
+  })
+
+  switches.forEach(({ track: switchTrack, trackClass }) => {
+    let target = getWorldConnections(switchTrack)[2]
+    for (const definitionId of ['g600', 'buffer-standard']) {
+      const definition = TRACKS.find((track) => track.id === definitionId) ?? TRACKS[0]
+      const branchTrack = alignConnection({
+        id: uid(),
+        definitionId,
+        x: 0,
+        y: 0,
+        rotation: 0,
+        circuit: 'A',
+        trackClass,
+      }, getTrackGeometry(definition).connections[0], target)
+      generated.push(branchTrack)
+      target = getWorldConnections(branchTrack)[1] ?? target
+    }
+  })
+
+  const required = generated.reduce<Record<string, number>>((counts, track) => {
+    counts[track.definitionId] = (counts[track.definitionId] ?? 0) + 1
+    return counts
+  }, {})
+  const shortages = Object.entries(required).flatMap(([id, count]) => {
+    const available = inventory[id]
+    if (available === undefined || available >= count) return []
+    const definition = TRACKS.find((track) => track.id === id)
+    return [`${definition?.article ?? id}: ${count - available} fehlen`]
+  })
+  if (shortages.length) return { success: false as const, message: `Bestand reicht nicht aus: ${shortages.join(', ')}` }
+
+  const points = generated.flatMap((track) => [{ x: track.x, y: track.y }, ...getWorldConnections(track)])
+  const minX = Math.min(...points.map((point) => point.x))
+  const maxX = Math.max(...points.map((point) => point.x))
+  const minY = Math.min(...points.map((point) => point.y))
+  const maxY = Math.max(...points.map((point) => point.y))
+  const canvasWidth = canvasSize.widthMeters * UNITS_PER_METER
+  const canvasHeight = canvasSize.heightMeters * UNITS_PER_METER
+  const margin = 30
+  const availableX = canvasWidth - (maxX - minX) - margin * 2
+  const availableY = canvasHeight - (maxY - minY) - margin * 2
+  if (availableX < 0 || availableY < 0) {
+    return { success: false as const, message: 'Die gewünschte Anlage passt nicht auf die aktuelle Planfläche.' }
+  }
+
+  let best = { x: margin - minX + availableX / 2, y: margin - minY + availableY / 2, conflicts: Infinity }
+  const placementDivisor = Math.max(PLACEMENT_GRID_STEPS - 1, 1)
+  for (let column = 0; column < PLACEMENT_GRID_STEPS; column += 1) {
+    for (let row = 0; row < PLACEMENT_GRID_STEPS; row += 1) {
+      const x = margin - minX + availableX * column / placementDivisor
+      const y = margin - minY + availableY * row / placementDivisor
+      const conflicts = generated.reduce((sum, track) => sum + terrain.filter((patch) =>
+        distance({ x: track.x + x, y: track.y + y }, patch) < (patch.kind === 'building' ? 100 : 80)).length, 0)
+      if (conflicts < best.conflicts) best = { x, y, conflicts }
+    }
+  }
+
+  return {
+    success: true as const,
+    tracks: generated.map((track) => ({ ...track, x: track.x + best.x, y: track.y + best.y })),
+    message: best.conflicts > 0
+      ? `Plan erstellt. ${best.conflicts} Geländekonflikte konnten nicht vermieden werden.`
+      : `Plan mit ${generated.length} Gleisen erstellt.`,
+  }
+}
+
 const getConnectedIndexes = (tracks: PlacedTrack[]) => {
   const result = new Map<string, Set<number>>()
   const buckets = new Map<string, ReturnType<typeof getWorldConnections>>()
@@ -352,6 +488,15 @@ function App() {
   const [trackClass, setTrackClass] = useState<TrackClass>('main')
   const [catalogFilter, setCatalogFilter] = useState<'all' | 'track' | 'switch' | 'special'>('all')
   const [catalogSearch, setCatalogSearch] = useState('')
+  const [inventoryOpen, setInventoryOpen] = useState(false)
+  const [inventory, setInventory] = useState<TrackInventory>(() => {
+    try { return normalizeInventory(JSON.parse(localStorage.getItem('lgb-inventory') || '{}')) } catch { return {} }
+  })
+  const [plannerOpen, setPlannerOpen] = useState(false)
+  const [plannerOptions, setPlannerOptions] = useState<PlannerOptions>({ straightSections: 3, sidings: 1, stationTracks: 1 })
+  const [plannerMessage, setPlannerMessage] = useState('')
+  const [plannerNotice, setPlannerNotice] = useState('')
+  const [plannerReplaceConfirmed, setPlannerReplaceConfirmed] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [projectName, setProjectName] = useState('Meine Gartenbahn')
   const [canvasSize, setCanvasSize] = useState(loadCanvasSize)
@@ -367,6 +512,8 @@ function App() {
   const hadPinchRef = useRef(false)
   const zoomFrameRef = useRef<number | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+  const plannerButtonRef = useRef<HTMLButtonElement>(null)
+  const plannerModalRef = useRef<HTMLElement>(null)
   const canvasWidth = canvasSize.widthMeters * UNITS_PER_METER
   const canvasHeight = canvasSize.heightMeters * UNITS_PER_METER
   const roomWidth = Math.max(0, canvasWidth - 90)
@@ -374,6 +521,12 @@ function App() {
   const roomDoorWidth = Math.min(135, roomWidth * .25)
   const roomDoorDepth = Math.min(100, roomHeight * .25)
   const connectedIndexes = useMemo(() => getConnectedIndexes(tracks), [tracks])
+  const usedInventory = useMemo(() => tracks.reduce<Record<string, number>>((counts, track) => {
+    counts[track.definitionId] = (counts[track.definitionId] ?? 0) + 1
+    return counts
+  }, {}), [tracks])
+  const inventoryShortages = useMemo(() => TRACKS.filter((track) =>
+    track.id in inventory && (usedInventory[track.id] ?? 0) > inventory[track.id]), [inventory, usedInventory])
 
   useEffect(() => {
     localStorage.setItem('lgb-tracks', JSON.stringify(tracks))
@@ -381,8 +534,22 @@ function App() {
   }, [tracks, terrain])
 
   useEffect(() => {
+    localStorage.setItem('lgb-inventory', JSON.stringify(inventory))
+  }, [inventory])
+
+  useEffect(() => {
     localStorage.setItem('lgb-canvas', JSON.stringify(canvasSize))
   }, [canvasSize])
+
+  useEffect(() => {
+    if (!plannerNotice) return
+    const timeout = window.setTimeout(() => setPlannerNotice(''), 5000)
+    return () => window.clearTimeout(timeout)
+  }, [plannerNotice])
+
+  useEffect(() => {
+    if (plannerOpen) plannerModalRef.current?.focus()
+  }, [plannerOpen])
 
   const canvasPoint = (event: React.PointerEvent<SVGSVGElement>) => {
     return toCanvasPoint(event.currentTarget, event.clientX, event.clientY)
@@ -539,8 +706,57 @@ function App() {
     setSelectedId(null)
   }
 
+  const createAutomaticPlan = () => {
+    if (tracks.length > 0 && !plannerReplaceConfirmed) {
+      setPlannerMessage('Der automatische Plan ersetzt die aktuell verlegten Gleise. Zum Bestätigen erneut „Plan erstellen“ wählen.')
+      setPlannerReplaceConfirmed(true)
+      return
+    }
+    const result = generateAutomaticLayout(plannerOptions, canvasSize, terrain, inventory)
+    if (!result.success) {
+      setPlannerMessage(result.message)
+      return
+    }
+    setTracks(result.tracks)
+    setSelectedId(null)
+    setPlannerNotice(result.message)
+    setPlannerMessage('')
+    closePlanner()
+  }
+
+  const closePlanner = () => {
+    setPlannerOpen(false)
+    setPlannerReplaceConfirmed(false)
+    requestAnimationFrame(() => plannerButtonRef.current?.focus())
+  }
+
+  const updatePlannerOptions = (change: Partial<PlannerOptions>) => {
+    setPlannerOptions((options) => ({ ...options, ...change }))
+    setPlannerReplaceConfirmed(false)
+    setPlannerMessage('')
+  }
+
+  const handlePlannerKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
+    if (event.key === 'Escape') {
+      closePlanner()
+      return
+    }
+    if (event.key !== 'Tab') return
+    const focusable = [...(plannerModalRef.current?.querySelectorAll<HTMLElement>('button, input, select, [tabindex]:not([tabindex="-1"])') ?? [])]
+    if (!focusable.length) return
+    const first = focusable[0]
+    const last = focusable[focusable.length - 1]
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault()
+      last.focus()
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault()
+      first.focus()
+    }
+  }
+
   const exportProject = () => {
-    const blob = new Blob([JSON.stringify({ version: 2, projectName, environment, canvas: canvasSize, tracks, terrain }, null, 2)], { type: 'application/json' })
+    const blob = new Blob([JSON.stringify({ version: 3, projectName, environment, canvas: canvasSize, tracks, terrain, inventory }, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
@@ -559,11 +775,12 @@ function App() {
       try {
         const data = JSON.parse(String(reader.result))
         if (!Array.isArray(data.tracks) || !Array.isArray(data.terrain)) throw new Error()
-        if (data.version !== undefined && data.version !== 1 && data.version !== 2) throw new Error()
+        if (data.version !== undefined && ![1, 2, 3].includes(data.version)) throw new Error()
         setTracks(data.tracks)
         setTerrain(data.terrain)
         setProjectName(data.projectName || 'Importierter Plan')
         setEnvironment(data.environment === 'indoor' ? 'indoor' : 'outdoor')
+        if (data.inventory !== undefined) setInventory(normalizeInventory(data.inventory))
         const importedCanvasSize = normalizeCanvasSize(data.canvas)
         setCanvasSize(importedCanvasSize)
         setCanvasInputs({
@@ -600,37 +817,89 @@ function App() {
       <main>
         <aside className={`catalog ${sidebarOpen ? 'open' : ''}`}>
           <div className="panel-heading">
-            <div><span className="eyebrow">Bauteile</span><h2>Gleiskatalog</h2></div>
+            <div><span className="eyebrow">Bauteile</span><h2>{inventoryOpen ? 'Gleisbestand' : 'Gleiskatalog'}</h2></div>
+            <button className="inventory-toggle" onClick={() => setInventoryOpen((open) => !open)}>
+              {inventoryOpen ? 'Katalog' : 'Bestand'}
+            </button>
             <button className="close-catalog" onClick={() => setSidebarOpen(false)} aria-label="Katalog schließen">×</button>
           </div>
-          <div className="segment-control">
-            {(['all', 'track', 'switch', 'special'] as const).map((filter) => (
-              <button key={filter} className={catalogFilter === filter ? 'active' : ''} onClick={() => setCatalogFilter(filter)}>
-                {{ all: 'Alle', track: 'Gleise', switch: 'Weichen', special: 'Sonder' }[filter]}
-              </button>
-            ))}
-          </div>
-          <label className="catalog-search">
-            <span aria-hidden="true">⌕</span>
-            <input value={catalogSearch} onChange={(event) => setCatalogSearch(event.target.value)} placeholder={`${TRACKS.length} Gleisartikel durchsuchen`} aria-label="Gleiskatalog durchsuchen" />
-          </label>
-          <div className="track-list">
-            {filteredTracks.map((item) => (
-              <button key={item.id} className={`catalog-card ${activeTrack === item.id && !terrainBrush ? 'active' : ''}`} onClick={() => { setActiveTrack(item.id); setTerrainBrush(null); if (window.innerWidth <= 900) setSidebarOpen(false) }}>
-                <span className={`track-preview ${item.kind}`} aria-hidden="true">
-                  <svg viewBox="0 0 100 56"><TrackShape track={{ id: '', definitionId: item.id, x: 50, y: 28, rotation: 0, circuit: 'A', trackClass: 'main' }} selected={false} preview /></svg>
-                </span>
-                <span><strong>{item.name}</strong><small>{item.article} · {item.detail}</small></span>
-                <span className="add-symbol">＋</span>
-              </button>
-            ))}
-          </div>
-          <div className="catalog-hint"><strong>Magnetische Verbindungen</strong><p>Nahe an einem freien Gleisende platzieren oder ziehen – das neue Gleis richtet sich automatisch exakt aus.</p></div>
+          {inventoryOpen ? (
+            <>
+              <div className={`inventory-summary ${inventoryShortages.length ? 'warning' : ''}`}>
+                <strong>{inventoryShortages.length ? `${inventoryShortages.length} Artikel fehlen` : 'Plan ist baubar'}</strong>
+                <span>Nicht erfasste Artikel gelten als unbegrenzt verfügbar.</span>
+              </div>
+              <div className="inventory-list">
+                {TRACKS.map((item) => {
+                  const used = usedInventory[item.id] ?? 0
+                  const available = inventory[item.id]
+                  const missing = available === undefined ? 0 : Math.max(0, used - available)
+                  return (
+                    <label key={item.id} className={missing ? 'inventory-row missing' : 'inventory-row'}>
+                      <span><strong>{item.article}</strong><small>{item.name}</small></span>
+                      <span className="inventory-used">{used} verbaut</span>
+                      <input
+                        type="number"
+                        min="0"
+                        max="999"
+                        placeholder="∞"
+                        value={available ?? ''}
+                        aria-label={`Verfügbarer Bestand ${item.article}`}
+                        onChange={(event) => {
+                          const value = event.target.value
+                          setInventory((current) => {
+                            if (value === '') {
+                              const next = { ...current }
+                              delete next[item.id]
+                              return next
+                            }
+                            return { ...current, [item.id]: clamp(Math.floor(Number(value) || 0), 0, 999) }
+                          })
+                        }}
+                      />
+                      {missing > 0 && <em>{missing} fehlen</em>}
+                    </label>
+                  )
+                })}
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="segment-control">
+                {(['all', 'track', 'switch', 'special'] as const).map((filter) => (
+                  <button key={filter} className={catalogFilter === filter ? 'active' : ''} onClick={() => setCatalogFilter(filter)}>
+                    {{ all: 'Alle', track: 'Gleise', switch: 'Weichen', special: 'Sonder' }[filter]}
+                  </button>
+                ))}
+              </div>
+              <label className="catalog-search">
+                <span aria-hidden="true">⌕</span>
+                <input value={catalogSearch} onChange={(event) => setCatalogSearch(event.target.value)} placeholder={`${TRACKS.length} Gleisartikel durchsuchen`} aria-label="Gleiskatalog durchsuchen" />
+              </label>
+              <div className="track-list">
+                {filteredTracks.map((item) => {
+                  const used = usedInventory[item.id] ?? 0
+                  const available = inventory[item.id]
+                  return (
+                    <button key={item.id} className={`catalog-card ${activeTrack === item.id && !terrainBrush ? 'active' : ''}`} onClick={() => { setActiveTrack(item.id); setTerrainBrush(null); if (window.innerWidth <= 900) setSidebarOpen(false) }}>
+                      <span className={`track-preview ${item.kind}`} aria-hidden="true">
+                        <svg viewBox="0 0 100 56"><TrackShape track={{ id: '', definitionId: item.id, x: 50, y: 28, rotation: 0, circuit: 'A', trackClass: 'main' }} selected={false} preview /></svg>
+                      </span>
+                      <span><strong>{item.name}</strong><small>{item.article} · {item.detail}</small><small>{used} verbaut · {available === undefined ? 'Bestand ∞' : `${available} verfügbar`}</small></span>
+                      <span className="add-symbol">＋</span>
+                    </button>
+                  )
+                })}
+              </div>
+              <div className="catalog-hint"><strong>Magnetische Verbindungen</strong><p>Nahe an einem freien Gleisende platzieren oder ziehen – das neue Gleis richtet sich automatisch exakt aus.</p></div>
+            </>
+          )}
         </aside>
 
         <section className="workspace">
           <div className="workspace-toolbar">
             <button className="mobile-catalog" onClick={() => setSidebarOpen(true)}>☰ <span>Gleise</span></button>
+            <button ref={plannerButtonRef} className="planner-button" onClick={() => { setPlannerMessage(''); setPlannerReplaceConfirmed(false); setPlannerOpen(true) }}>✦ Auto-Plan</button>
             <div className="mode-switch">
               <button className={environment === 'outdoor' ? 'active' : ''} onClick={() => setEnvironment('outdoor')}>☀ Outdoor</button>
               <button className={environment === 'indoor' ? 'active' : ''} onClick={() => setEnvironment('indoor')}>⌂ Indoor</button>
@@ -710,7 +979,7 @@ function App() {
               )}
             </svg>
             <div className="scale"><span style={{ width: `${UNITS_PER_METER * zoom / 100}px` }} /> 1 m</div>
-            <div className="status-pill">{tracks.length} Gleise · {terrain.length} Geländeelemente</div>
+            <div className="status-pill">{plannerNotice || `${tracks.length} Gleise · ${terrain.length} Geländeelemente`}</div>
           </div>
 
           <div className="bottom-tools">
@@ -737,6 +1006,29 @@ function App() {
           )}
         </section>
       </main>
+      {plannerOpen && (
+        <div className="modal-backdrop" role="presentation" onClick={closePlanner}>
+          <section ref={plannerModalRef} className="planner-modal" role="dialog" aria-modal="true" aria-labelledby="planner-title" tabIndex={-1} onClick={(event) => event.stopPropagation()} onKeyDown={handlePlannerKeyDown}>
+            <span className="eyebrow">Automatischer Planungsmodus</span>
+            <h2 id="planner-title">Anlage entwerfen</h2>
+            <p>Erstellt eine geschlossene Hauptstrecke, berücksichtigt die Planfläche und sucht eine Position mit möglichst wenigen Geländekonflikten.</p>
+            <label>Geraden je Längsseite
+              <input type="number" min="1" max="8" value={plannerOptions.straightSections} onChange={(event) => updatePlannerOptions({ straightSections: clamp(Number(event.target.value) || 1, 1, 8) })} />
+            </label>
+            <label>Bahnhofsgleise
+              <input type="number" min="0" max="4" value={plannerOptions.stationTracks} onChange={(event) => updatePlannerOptions({ stationTracks: clamp(Number(event.target.value) || 0, 0, 4) })} />
+            </label>
+            <label>Abstellgleise
+              <input type="number" min="0" max="4" value={plannerOptions.sidings} onChange={(event) => updatePlannerOptions({ sidings: clamp(Number(event.target.value) || 0, 0, 4) })} />
+            </label>
+            {plannerMessage && <div className="planner-message" role="alert">{plannerMessage}</div>}
+            <div className="modal-actions">
+              <button onClick={closePlanner}>Abbrechen</button>
+              <button className="primary" onClick={createAutomaticPlan}>Plan erstellen</button>
+            </div>
+          </section>
+        </div>
+      )}
     </div>
   )
 }

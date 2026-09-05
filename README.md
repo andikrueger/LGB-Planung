@@ -14,6 +14,8 @@ Eine touch-optimierte Webanwendung zur groben Planung von Lehmann-Gartenbahn-Anl
 - Zoom von 25 % bis 200 % mit verschiebbarer Planfläche
 - Grobmodellierung mit Wiese, Erde, Wasser, Hügeln und Gebäuden
 - Automatische lokale Speicherung sowie JSON-Import und -Export
+- Gleisbestand mit Vergleich von verfügbaren, verbauten und fehlenden Artikeln
+- Automatische Erzeugung geschlossener Anlagen mit Bahnhof- und Abstellgleisen
 
 Die Plandaten bleiben ausschließlich im `localStorage` des jeweiligen Browsers.
 Es werden keine Projektdaten an einen Server übertragen.
