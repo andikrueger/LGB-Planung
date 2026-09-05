@@ -16,6 +16,7 @@ Eine touch-optimierte Webanwendung zur groben Planung von Lehmann-Gartenbahn-Anl
 - Automatische lokale Speicherung sowie JSON-Import und -Export
 - Gleisbestand mit Vergleich von verfügbaren, verbauten und fehlenden Artikeln
 - Automatische Erzeugung geschlossener Anlagen mit Bahnhof- und Abstellgleisen
+- Gartenfoto per Kamera oder Datei als Hintergrund mit Größe, Position, Drehung und Transparenz ausrichten
 
 Die Plandaten bleiben ausschließlich im `localStorage` des jeweiligen Browsers.
 Es werden keine Projektdaten an einen Server übertragen.

@@ -41,6 +41,16 @@ type CanvasSize = {
   heightMeters: number
 }
 
+type PhotoLayer = {
+  dataUrl: string
+  name: string
+  offsetX: number
+  offsetY: number
+  scale: number
+  rotation: number
+  opacity: number
+}
+
 type TrackInventory = Record<string, number>
 
 type PlannerOptions = {
@@ -124,6 +134,10 @@ const ROTATION_STEP = 7.5
 const OVAL_CURVES_PER_END = 6
 const PLACEMENT_GRID_STEPS = 5
 const NO_CONNECTIONS = new Set<number>()
+const DEFAULT_PHOTO_ALIGNMENT = { offsetX: 0, offsetY: 0, scale: 100, rotation: 0, opacity: 65 }
+const MAX_PHOTO_BYTES = 20 * 1024 * 1024
+const MAX_PHOTO_EDGE = 2048
+const SUPPORTED_PHOTO_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp'])
 
 const uid = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`
 const clamp = (value: number, minimum: number, maximum: number) => Math.min(maximum, Math.max(minimum, value))
@@ -424,6 +438,62 @@ const normalizeCanvasSize = (value: unknown): CanvasSize => {
   }
 }
 
+const normalizePhoto = (value: unknown): PhotoLayer | null => {
+  if (!value || typeof value !== 'object') return null
+  const photo = value as Partial<PhotoLayer>
+  if (typeof photo.dataUrl !== 'string' || !/^data:image\/(?:jpeg|png|webp);base64,/i.test(photo.dataUrl)) return null
+  return {
+    dataUrl: photo.dataUrl,
+    name: typeof photo.name === 'string' ? photo.name : 'Gartenfoto',
+    offsetX: clamp(Number(photo.offsetX) || 0, -100, 100),
+    offsetY: clamp(Number(photo.offsetY) || 0, -100, 100),
+    scale: clamp(Number(photo.scale) || 100, 25, 300),
+    rotation: clamp(Number(photo.rotation) || 0, -180, 180),
+    opacity: clamp(Number(photo.opacity) || 65, 10, 100),
+  }
+}
+
+const loadPhoto = () => {
+  try {
+    return normalizePhoto(JSON.parse(localStorage.getItem('lgb-photo') || 'null'))
+  } catch {
+    return null
+  }
+}
+
+const preparePhoto = (file: File) => new Promise<string>((resolve, reject) => {
+  if (!SUPPORTED_PHOTO_TYPES.has(file.type)) {
+    reject(new Error('Bitte ein Foto im Format JPEG, PNG oder WebP auswählen.'))
+    return
+  }
+  if (file.size > MAX_PHOTO_BYTES) {
+    reject(new Error('Das Foto darf höchstens 20 MB groß sein.'))
+    return
+  }
+
+  const reader = new FileReader()
+  reader.onerror = () => reject(new Error('Das Foto konnte nicht gelesen werden.'))
+  reader.onload = () => {
+    const image = new Image()
+    image.onerror = () => reject(new Error('Das Foto konnte nicht verarbeitet werden.'))
+    image.onload = () => {
+      const ratio = Math.min(1, MAX_PHOTO_EDGE / Math.max(image.naturalWidth, image.naturalHeight))
+      const canvas = document.createElement('canvas')
+      canvas.width = Math.max(1, Math.round(image.naturalWidth * ratio))
+      canvas.height = Math.max(1, Math.round(image.naturalHeight * ratio))
+      const context = canvas.getContext('2d')
+      if (!context) {
+        reject(new Error('Das Foto konnte nicht verarbeitet werden.'))
+        return
+      }
+      context.drawImage(image, 0, 0, canvas.width, canvas.height)
+      resolve(canvas.toDataURL('image/jpeg', .82))
+    }
+    image.src = String(reader.result)
+  }
+  reader.readAsDataURL(file)
+})
+
 const toCanvasPoint = (svg: SVGSVGElement, clientX: number, clientY: number) => {
   const matrix = svg.getScreenCTM()
   if (!matrix) return null
@@ -504,6 +574,9 @@ function App() {
     widthMeters: String(canvasSize.widthMeters),
     heightMeters: String(canvasSize.heightMeters),
   }))
+  const [photo, setPhoto] = useState<PhotoLayer | null>(loadPhoto)
+  const [photoPanelOpen, setPhotoPanelOpen] = useState(false)
+  const [photoStorageWarning, setPhotoStorageWarning] = useState(false)
   const [zoom, setZoom] = useState(100)
   const dragRef = useRef<{ id: string; dx: number; dy: number } | null>(null)
   const canvasWrapRef = useRef<HTMLDivElement>(null)
@@ -512,6 +585,7 @@ function App() {
   const hadPinchRef = useRef(false)
   const zoomFrameRef = useRef<number | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+  const photoFileRef = useRef<HTMLInputElement>(null)
   const plannerButtonRef = useRef<HTMLButtonElement>(null)
   const plannerModalRef = useRef<HTMLElement>(null)
   const canvasWidth = canvasSize.widthMeters * UNITS_PER_METER
@@ -540,6 +614,16 @@ function App() {
   useEffect(() => {
     localStorage.setItem('lgb-canvas', JSON.stringify(canvasSize))
   }, [canvasSize])
+
+  useEffect(() => {
+    try {
+      if (photo) localStorage.setItem('lgb-photo', JSON.stringify(photo))
+      else localStorage.removeItem('lgb-photo')
+      setPhotoStorageWarning(false)
+    } catch {
+      setPhotoStorageWarning(true)
+    }
+  }, [photo])
 
   useEffect(() => {
     if (!plannerNotice) return
@@ -700,10 +784,29 @@ function App() {
   })
 
   const resetProject = () => {
-    if (tracks.length + terrain.length > 0 && !window.confirm('Den aktuellen Plan wirklich leeren?')) return
+    if ((tracks.length + terrain.length > 0 || photo) && !window.confirm('Den aktuellen Plan wirklich leeren?')) return
     setTracks([])
     setTerrain([])
+    setPhoto(null)
+    setPhotoPanelOpen(false)
     setSelectedId(null)
+  }
+
+  const importPhoto = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    try {
+      const dataUrl = await preparePhoto(file)
+      setPhoto({ dataUrl, name: file.name, ...DEFAULT_PHOTO_ALIGNMENT })
+      setPhotoPanelOpen(true)
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : 'Das Foto konnte nicht verarbeitet werden.')
+    }
+  }
+
+  const updatePhoto = (change: Partial<PhotoLayer>) => {
+    setPhoto((current) => current ? { ...current, ...change } : null)
   }
 
   const createAutomaticPlan = () => {
@@ -756,7 +859,7 @@ function App() {
   }
 
   const exportProject = () => {
-    const blob = new Blob([JSON.stringify({ version: 3, projectName, environment, canvas: canvasSize, tracks, terrain, inventory }, null, 2)], { type: 'application/json' })
+    const blob = new Blob([JSON.stringify({ version: 4, projectName, environment, canvas: canvasSize, tracks, terrain, inventory, photo }, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
@@ -775,12 +878,14 @@ function App() {
       try {
         const data = JSON.parse(String(reader.result))
         if (!Array.isArray(data.tracks) || !Array.isArray(data.terrain)) throw new Error()
-        if (data.version !== undefined && ![1, 2, 3].includes(data.version)) throw new Error()
+        if (data.version !== undefined && ![1, 2, 3, 4].includes(data.version)) throw new Error()
         setTracks(data.tracks)
         setTerrain(data.terrain)
         setProjectName(data.projectName || 'Importierter Plan')
         setEnvironment(data.environment === 'indoor' ? 'indoor' : 'outdoor')
         if (data.inventory !== undefined) setInventory(normalizeInventory(data.inventory))
+        setPhoto(normalizePhoto(data.photo))
+        setPhotoPanelOpen(Boolean(normalizePhoto(data.photo)))
         const importedCanvasSize = normalizeCanvasSize(data.canvas)
         setCanvasSize(importedCanvasSize)
         setCanvasInputs({
@@ -900,6 +1005,13 @@ function App() {
           <div className="workspace-toolbar">
             <button className="mobile-catalog" onClick={() => setSidebarOpen(true)}>☰ <span>Gleise</span></button>
             <button ref={plannerButtonRef} className="planner-button" onClick={() => { setPlannerMessage(''); setPlannerReplaceConfirmed(false); setPlannerOpen(true) }}>✦ Auto-Plan</button>
+            <button
+              className={`photo-button ${photo ? 'active' : ''}`}
+              onClick={() => photo ? setPhotoPanelOpen((open) => !open) : photoFileRef.current?.click()}
+            >
+              ▧ {photo ? 'Foto ausrichten' : 'Gartenfoto'}
+            </button>
+            <input ref={photoFileRef} type="file" accept="image/jpeg,image/png,image/webp" capture="environment" hidden onChange={importPhoto} />
             <div className="mode-switch">
               <button className={environment === 'outdoor' ? 'active' : ''} onClick={() => setEnvironment('outdoor')}>☀ Outdoor</button>
               <button className={environment === 'indoor' ? 'active' : ''} onClick={() => setEnvironment('indoor')}>⌂ Indoor</button>
@@ -952,6 +1064,25 @@ function App() {
                 <filter id="patchShadow"><feDropShadow dx="0" dy="3" stdDeviation="5" floodOpacity=".15" /></filter>
               </defs>
               <rect width={canvasWidth} height={canvasHeight} className="canvas-ground" />
+              {photo && (() => {
+                const width = canvasWidth * photo.scale / 100
+                const height = canvasHeight * photo.scale / 100
+                const x = (canvasWidth - width) / 2 + photo.offsetX * UNITS_PER_METER
+                const y = (canvasHeight - height) / 2 + photo.offsetY * UNITS_PER_METER
+                return (
+                  <image
+                    href={photo.dataUrl}
+                    x={x}
+                    y={y}
+                    width={width}
+                    height={height}
+                    opacity={photo.opacity / 100}
+                    preserveAspectRatio="xMidYMid slice"
+                    transform={`rotate(${photo.rotation} ${x + width / 2} ${y + height / 2})`}
+                    className="photo-layer"
+                  />
+                )
+              })()}
               {environment === 'indoor' && (
                 <g className="room-outline">
                   <rect x="45" y="45" width={roomWidth} height={roomHeight} rx="6" />
@@ -970,7 +1101,7 @@ function App() {
                   <TrackShape track={track} selected={selectedId === track.id} connected={connectedIndexes.get(track.id) ?? NO_CONNECTIONS} />
                 </g>
               ))}
-              {tracks.length === 0 && terrain.length === 0 && (
+              {tracks.length === 0 && terrain.length === 0 && !photo && (
                 <g className="empty-state" transform={`translate(${canvasWidth / 2} ${canvasHeight / 2 - 35})`}>
                   <circle r="54" /><text y="8">⌁</text>
                   <text className="empty-title" y="92">Deine Anlage beginnt hier</text>
@@ -979,7 +1110,27 @@ function App() {
               )}
             </svg>
             <div className="scale"><span style={{ width: `${UNITS_PER_METER * zoom / 100}px` }} /> 1 m</div>
-            <div className="status-pill">{plannerNotice || `${tracks.length} Gleise · ${terrain.length} Geländeelemente`}</div>
+            <div className="status-pill">{plannerNotice || photoStorageWarning ? 'Foto ist zu groß für die automatische Speicherung' : `${tracks.length} Gleise · ${terrain.length} Geländeelemente`}</div>
+            {photo && photoPanelOpen && (
+              <section className="photo-panel" aria-label="Gartenfoto ausrichten">
+                <div className="photo-panel-heading">
+                  <span><small>Hintergrund</small><strong>{photo.name}</strong></span>
+                  <button onClick={() => setPhotoPanelOpen(false)} aria-label="Fotoeinstellungen schließen">×</button>
+                </div>
+                <label>Größe <input type="range" min="25" max="300" value={photo.scale} onChange={(event) => updatePhoto({ scale: Number(event.target.value) })} /><output>{photo.scale}%</output></label>
+                <label>Drehung <input type="range" min="-180" max="180" step="1" value={photo.rotation} onChange={(event) => updatePhoto({ rotation: Number(event.target.value) })} /><output>{photo.rotation}°</output></label>
+                <label>Transparenz <input type="range" min="10" max="100" value={photo.opacity} onChange={(event) => updatePhoto({ opacity: Number(event.target.value) })} /><output>{photo.opacity}%</output></label>
+                <div className="photo-offsets">
+                  <label>Horizontal <span><input type="number" min="-100" max="100" step=".1" value={photo.offsetX} onChange={(event) => updatePhoto({ offsetX: clamp(Number(event.target.value) || 0, -100, 100) })} /> m</span></label>
+                  <label>Vertikal <span><input type="number" min="-100" max="100" step=".1" value={photo.offsetY} onChange={(event) => updatePhoto({ offsetY: clamp(Number(event.target.value) || 0, -100, 100) })} /> m</span></label>
+                </div>
+                <div className="photo-actions">
+                  <button onClick={() => updatePhoto(DEFAULT_PHOTO_ALIGNMENT)}>Zurücksetzen</button>
+                  <button onClick={() => photoFileRef.current?.click()}>Foto ersetzen</button>
+                  <button className="remove-photo" onClick={() => { setPhoto(null); setPhotoPanelOpen(false) }}>Entfernen</button>
+                </div>
+              </section>
+            )}
           </div>
 
           <div className="bottom-tools">
