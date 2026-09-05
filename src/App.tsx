@@ -123,6 +123,7 @@ const CONNECTION_TOLERANCE_UNITS = 1
 const ROTATION_STEP = 7.5
 const OVAL_CURVES_PER_END = 6
 const PLACEMENT_GRID_STEPS = 5
+const SELECTION_PANEL_EDGE_THRESHOLD = 90
 const NO_CONNECTIONS = new Set<number>()
 
 const uid = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`
@@ -989,7 +990,7 @@ function App() {
             <div className="status-pill">{plannerNotice || `${tracks.length} Gleise · ${terrain.length} Geländeelemente`}</div>
             {selected && (
               <div
-                className={`selection-panel ${selected.y * zoom / 100 < 90 ? 'below' : ''}`}
+                className={`selection-panel ${selected.y * zoom / 100 < SELECTION_PANEL_EDGE_THRESHOLD ? 'below' : ''}`}
                 data-track={selected.id}
                 style={{
                   left: `${selectionPanelLeft}px`,
