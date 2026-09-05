@@ -341,9 +341,10 @@ const generateAutomaticLayout = (
     return counts
   }, {})
   const shortages = Object.entries(required).flatMap(([id, count]) => {
-    if (!(id in inventory) || inventory[id] >= count) return []
+    const available = inventory[id]
+    if (available === undefined || available >= count) return []
     const definition = TRACKS.find((track) => track.id === id)
-    return [`${definition?.article ?? id}: ${count - inventory[id]} fehlen`]
+    return [`${definition?.article ?? id}: ${count - available} fehlen`]
   })
   if (shortages.length) return { success: false as const, message: `Bestand reicht nicht aus: ${shortages.join(', ')}` }
 
@@ -495,6 +496,7 @@ function App() {
   const [plannerOptions, setPlannerOptions] = useState<PlannerOptions>({ straightSections: 3, sidings: 1, stationTracks: 1 })
   const [plannerMessage, setPlannerMessage] = useState('')
   const [plannerNotice, setPlannerNotice] = useState('')
+  const [plannerReplaceConfirmed, setPlannerReplaceConfirmed] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [projectName, setProjectName] = useState('Meine Gartenbahn')
   const [canvasSize, setCanvasSize] = useState(loadCanvasSize)
@@ -511,6 +513,7 @@ function App() {
   const zoomFrameRef = useRef<number | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const plannerButtonRef = useRef<HTMLButtonElement>(null)
+  const plannerModalRef = useRef<HTMLElement>(null)
   const canvasWidth = canvasSize.widthMeters * UNITS_PER_METER
   const canvasHeight = canvasSize.heightMeters * UNITS_PER_METER
   const roomWidth = Math.max(0, canvasWidth - 90)
@@ -700,7 +703,11 @@ function App() {
   }
 
   const createAutomaticPlan = () => {
-    if (tracks.length > 0 && !window.confirm('Der automatische Plan ersetzt die aktuell verlegten Gleise. Fortfahren?')) return
+    if (tracks.length > 0 && !plannerReplaceConfirmed) {
+      setPlannerMessage('Der automatische Plan ersetzt die aktuell verlegten Gleise. Zum Bestätigen erneut „Plan erstellen“ wählen.')
+      setPlannerReplaceConfirmed(true)
+      return
+    }
     const result = generateAutomaticLayout(plannerOptions, canvasSize, terrain, inventory)
     if (!result.success) {
       setPlannerMessage(result.message)
@@ -715,7 +722,27 @@ function App() {
 
   const closePlanner = () => {
     setPlannerOpen(false)
+    setPlannerReplaceConfirmed(false)
     requestAnimationFrame(() => plannerButtonRef.current?.focus())
+  }
+
+  const handlePlannerKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
+    if (event.key === 'Escape') {
+      closePlanner()
+      return
+    }
+    if (event.key !== 'Tab') return
+    const focusable = [...(plannerModalRef.current?.querySelectorAll<HTMLElement>('button, input, select, [tabindex]:not([tabindex="-1"])') ?? [])]
+    if (!focusable.length) return
+    const first = focusable[0]
+    const last = focusable[focusable.length - 1]
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault()
+      last.focus()
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault()
+      first.focus()
+    }
   }
 
   const exportProject = () => {
@@ -862,7 +889,7 @@ function App() {
         <section className="workspace">
           <div className="workspace-toolbar">
             <button className="mobile-catalog" onClick={() => setSidebarOpen(true)}>☰ <span>Gleise</span></button>
-            <button ref={plannerButtonRef} className="planner-button" onClick={() => { setPlannerMessage(''); setPlannerOpen(true) }}>✦ Auto-Plan</button>
+            <button ref={plannerButtonRef} className="planner-button" onClick={() => { setPlannerMessage(''); setPlannerReplaceConfirmed(false); setPlannerOpen(true) }}>✦ Auto-Plan</button>
             <div className="mode-switch">
               <button className={environment === 'outdoor' ? 'active' : ''} onClick={() => setEnvironment('outdoor')}>☀ Outdoor</button>
               <button className={environment === 'indoor' ? 'active' : ''} onClick={() => setEnvironment('indoor')}>⌂ Indoor</button>
@@ -971,7 +998,7 @@ function App() {
       </main>
       {plannerOpen && (
         <div className="modal-backdrop" role="presentation" onClick={closePlanner}>
-          <section className="planner-modal" role="dialog" aria-modal="true" aria-labelledby="planner-title" onClick={(event) => event.stopPropagation()} onKeyDown={(event) => { if (event.key === 'Escape') closePlanner() }}>
+          <section ref={plannerModalRef} className="planner-modal" role="dialog" aria-modal="true" aria-labelledby="planner-title" onClick={(event) => event.stopPropagation()} onKeyDown={handlePlannerKeyDown}>
             <span className="eyebrow">Automatischer Planungsmodus</span>
             <h2 id="planner-title">Anlage entwerfen</h2>
             <p>Erstellt eine geschlossene Hauptstrecke, berücksichtigt die Planfläche und sucht eine Position mit möglichst wenigen Geländekonflikten.</p>
@@ -984,7 +1011,7 @@ function App() {
             <label>Abstellgleise
               <input type="number" min="0" max="4" value={plannerOptions.sidings} onChange={(event) => setPlannerOptions((options) => ({ ...options, sidings: clamp(Number(event.target.value) || 0, 0, 4) }))} />
             </label>
-            {plannerMessage && <div className="planner-message" role="status">{plannerMessage}</div>}
+            {plannerMessage && <div className="planner-message" role="alert">{plannerMessage}</div>}
             <div className="modal-actions">
               <button onClick={closePlanner}>Abbrechen</button>
               <button className="primary" onClick={createAutomaticPlan}>Plan erstellen</button>

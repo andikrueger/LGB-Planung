@@ -178,7 +178,6 @@ select { border: 1px solid #d8d9d3; border-radius: 7px; background: white; paddi
   }
   .catalog.open { transform: translateX(0); }
   .close-catalog { display: block; }
-  .inventory-toggle { margin-left: auto; }
   .mobile-catalog { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--line); background: white; border-radius: 7px; padding: 8px; font-size: 11px; }
   .workspace-toolbar { padding: 7px 10px; min-height: 56px; gap: 8px; overflow-x: auto; }
   .toolbar-divider { display: none; }
