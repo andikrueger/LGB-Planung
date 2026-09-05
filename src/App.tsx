@@ -547,6 +547,10 @@ function App() {
     return () => window.clearTimeout(timeout)
   }, [plannerNotice])
 
+  useEffect(() => {
+    if (plannerOpen) plannerModalRef.current?.focus()
+  }, [plannerOpen])
+
   const canvasPoint = (event: React.PointerEvent<SVGSVGElement>) => {
     return toCanvasPoint(event.currentTarget, event.clientX, event.clientY)
   }
@@ -724,6 +728,12 @@ function App() {
     setPlannerOpen(false)
     setPlannerReplaceConfirmed(false)
     requestAnimationFrame(() => plannerButtonRef.current?.focus())
+  }
+
+  const updatePlannerOptions = (change: Partial<PlannerOptions>) => {
+    setPlannerOptions((options) => ({ ...options, ...change }))
+    setPlannerReplaceConfirmed(false)
+    setPlannerMessage('')
   }
 
   const handlePlannerKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
@@ -998,18 +1008,18 @@ function App() {
       </main>
       {plannerOpen && (
         <div className="modal-backdrop" role="presentation" onClick={closePlanner}>
-          <section ref={plannerModalRef} className="planner-modal" role="dialog" aria-modal="true" aria-labelledby="planner-title" onClick={(event) => event.stopPropagation()} onKeyDown={handlePlannerKeyDown}>
+          <section ref={plannerModalRef} className="planner-modal" role="dialog" aria-modal="true" aria-labelledby="planner-title" tabIndex={-1} onClick={(event) => event.stopPropagation()} onKeyDown={handlePlannerKeyDown}>
             <span className="eyebrow">Automatischer Planungsmodus</span>
             <h2 id="planner-title">Anlage entwerfen</h2>
             <p>Erstellt eine geschlossene Hauptstrecke, berücksichtigt die Planfläche und sucht eine Position mit möglichst wenigen Geländekonflikten.</p>
             <label>Geraden je Längsseite
-              <input autoFocus type="number" min="1" max="8" value={plannerOptions.straightSections} onChange={(event) => setPlannerOptions((options) => ({ ...options, straightSections: clamp(Number(event.target.value) || 1, 1, 8) }))} />
+              <input type="number" min="1" max="8" value={plannerOptions.straightSections} onChange={(event) => updatePlannerOptions({ straightSections: clamp(Number(event.target.value) || 1, 1, 8) })} />
             </label>
             <label>Bahnhofsgleise
-              <input type="number" min="0" max="4" value={plannerOptions.stationTracks} onChange={(event) => setPlannerOptions((options) => ({ ...options, stationTracks: clamp(Number(event.target.value) || 0, 0, 4) }))} />
+              <input type="number" min="0" max="4" value={plannerOptions.stationTracks} onChange={(event) => updatePlannerOptions({ stationTracks: clamp(Number(event.target.value) || 0, 0, 4) })} />
             </label>
             <label>Abstellgleise
-              <input type="number" min="0" max="4" value={plannerOptions.sidings} onChange={(event) => setPlannerOptions((options) => ({ ...options, sidings: clamp(Number(event.target.value) || 0, 0, 4) }))} />
+              <input type="number" min="0" max="4" value={plannerOptions.sidings} onChange={(event) => updatePlannerOptions({ sidings: clamp(Number(event.target.value) || 0, 0, 4) })} />
             </label>
             {plannerMessage && <div className="planner-message" role="alert">{plannerMessage}</div>}
             <div className="modal-actions">
