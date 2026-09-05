@@ -576,7 +576,6 @@ function App() {
   }))
   const [photo, setPhoto] = useState<PhotoLayer | null>(loadPhoto)
   const [photoPanelOpen, setPhotoPanelOpen] = useState(false)
-  const [photoStorageWarning, setPhotoStorageWarning] = useState(false)
   const [zoom, setZoom] = useState(100)
   const dragRef = useRef<{ id: string; dx: number; dy: number } | null>(null)
   const canvasWrapRef = useRef<HTMLDivElement>(null)
@@ -619,10 +618,7 @@ function App() {
     try {
       if (photo) localStorage.setItem('lgb-photo', JSON.stringify(photo))
       else localStorage.removeItem('lgb-photo')
-      setPhotoStorageWarning(false)
-    } catch {
-      setPhotoStorageWarning(true)
-    }
+    } catch {}
   }, [photo])
 
   useEffect(() => {
@@ -1110,7 +1106,7 @@ function App() {
               )}
             </svg>
             <div className="scale"><span style={{ width: `${UNITS_PER_METER * zoom / 100}px` }} /> 1 m</div>
-            <div className="status-pill">{plannerNotice || photoStorageWarning ? 'Foto ist zu groß für die automatische Speicherung' : `${tracks.length} Gleise · ${terrain.length} Geländeelemente`}</div>
+            <div className="status-pill">{plannerNotice || `${tracks.length} Gleise · ${terrain.length} Geländeelemente`}</div>
             {photo && photoPanelOpen && (
               <section className="photo-panel" aria-label="Gartenfoto ausrichten">
                 <div className="photo-panel-heading">
