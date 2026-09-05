@@ -481,7 +481,7 @@ function App() {
     try { return JSON.parse(localStorage.getItem('lgb-terrain') || '[]') } catch { return [] }
   })
   const [environment, setEnvironment] = useState<'outdoor' | 'indoor'>('outdoor')
-  const [activeTrack, setActiveTrack] = useState<string | null>('g600')
+  const [activeTrack, setActiveTrack] = useState<string | null>(null)
   const [terrainBrush, setTerrainBrush] = useState<TerrainKind | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [activeCircuit, setActiveCircuit] = useState('A')
@@ -580,6 +580,7 @@ function App() {
       }
       setTracks((items) => [...items, item])
       setSelectedId(item.id)
+      setActiveTrack(null)
     }
   }
 
@@ -638,9 +639,12 @@ function App() {
       zoomFrameRef.current = null
       const wrap = canvasWrapRef.current
       if (!wrap) return
+      const bounds = wrap.getBoundingClientRect()
+      const midpointX = (first.x + second.x) / 2 - bounds.left
+      const midpointY = (first.y + second.y) / 2 - bounds.top
       const ratio = nextZoom / pinch.zoom
-      wrap.scrollLeft = (pinch.scrollLeft + pinch.focalX) * ratio - pinch.focalX
-      wrap.scrollTop = (pinch.scrollTop + pinch.focalY) * ratio - pinch.focalY
+      wrap.scrollLeft = (pinch.scrollLeft + pinch.focalX) * ratio - midpointX
+      wrap.scrollTop = (pinch.scrollTop + pinch.focalY) * ratio - midpointY
     })
   }
 
@@ -980,6 +984,23 @@ function App() {
             </svg>
             <div className="scale"><span style={{ width: `${UNITS_PER_METER * zoom / 100}px` }} /> 1 m</div>
             <div className="status-pill">{plannerNotice || `${tracks.length} Gleise · ${terrain.length} Geländeelemente`}</div>
+            {selected && (
+              <div
+                className="selection-panel"
+                data-track=""
+                style={{
+                  left: `${selected.x * zoom / 100}px`,
+                  top: `${selected.y * zoom / 100}px`,
+                }}
+              >
+                <div><small>Auswahl</small><strong>{TRACKS.find((item) => item.id === selected.definitionId)?.name}</strong></div>
+                <button aria-label="Gleis nach links drehen" onClick={() => updateSelected({ rotation: normalizeAngle(selected.rotation - ROTATION_STEP) })}>↶ <span>Links drehen</span></button>
+                <button aria-label="Gleis nach rechts drehen" onClick={() => updateSelected({ rotation: normalizeAngle(selected.rotation + ROTATION_STEP) })}>↷ <span>Rechts drehen</span></button>
+                <label><span>Stromkreis</span><select value={selected.circuit} onChange={(event) => updateSelected({ circuit: event.target.value })}>{CIRCUITS.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+                <label><span>Kennzeichnung</span><select value={selected.trackClass} onChange={(event) => updateSelected({ trackClass: event.target.value as TrackClass })}><option value="main">Hauptstrecke</option><option value="siding">Abstellgleis</option><option value="station">Bahnhofsgleis</option></select></label>
+                <button className="delete-button" aria-label="Gleis löschen" onClick={() => { setTracks((items) => items.filter((item) => item.id !== selected.id)); setSelectedId(null) }}>⌫ <span>Löschen</span></button>
+              </div>
+            )}
           </div>
 
           <div className="bottom-tools">
@@ -994,16 +1015,6 @@ function App() {
             <button className="clear-terrain" onClick={() => setTerrain([])} disabled={!terrain.length}>Gelände löschen</button>
           </div>
 
-          {selected && (
-            <div className="selection-panel">
-              <div><small>Auswahl</small><strong>{TRACKS.find((item) => item.id === selected.definitionId)?.name}</strong></div>
-              <button onClick={() => updateSelected({ rotation: normalizeAngle(selected.rotation - ROTATION_STEP) })}>↶ <span>Drehen</span></button>
-              <button onClick={() => updateSelected({ rotation: normalizeAngle(selected.rotation + ROTATION_STEP) })}>↷ <span>Drehen</span></button>
-              <label><span>Stromkreis</span><select value={selected.circuit} onChange={(event) => updateSelected({ circuit: event.target.value })}>{CIRCUITS.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
-              <label><span>Kennzeichnung</span><select value={selected.trackClass} onChange={(event) => updateSelected({ trackClass: event.target.value as TrackClass })}><option value="main">Hauptstrecke</option><option value="siding">Abstellgleis</option><option value="station">Bahnhofsgleis</option></select></label>
-              <button className="delete-button" onClick={() => { setTracks((items) => items.filter((item) => item.id !== selected.id)); setSelectedId(null) }}>⌫ <span>Löschen</span></button>
-            </div>
-          )}
         </section>
       </main>
       {plannerOpen && (
