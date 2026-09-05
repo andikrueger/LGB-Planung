@@ -499,14 +499,14 @@ const preparePhoto = (file: File) => new Promise<{ dataUrl: string; aspectRatio:
         reject(new Error('Das Foto konnte nicht verarbeitet werden.'))
         return
       }
-      if (file.type !== 'image/png') {
+      if (file.type === 'image/jpeg') {
         context.fillStyle = '#fff'
         context.fillRect(0, 0, canvas.width, canvas.height)
       }
       context.drawImage(image, 0, 0, canvas.width, canvas.height)
       const dataUrl = file.type === 'image/png'
         ? canvas.toDataURL('image/png')
-        : canvas.toDataURL('image/jpeg', .82)
+        : canvas.toDataURL(file.type, .82)
       resolve({ dataUrl, aspectRatio: canvas.width / canvas.height })
     }
     image.src = String(reader.result)
@@ -1096,7 +1096,7 @@ function App() {
                     width={width}
                     height={height}
                     opacity={photo.opacity / 100}
-                    preserveAspectRatio="xMidYMid meet"
+                    preserveAspectRatio="none"
                     transform={`rotate(${photo.rotation} ${x + width / 2} ${y + height / 2})`}
                     className="photo-layer"
                   />
