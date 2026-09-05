@@ -121,6 +121,8 @@ const MILLIMETERS_TO_UNITS = UNITS_PER_METER / 1000
 const SNAP_DISTANCE = 15
 const CONNECTION_TOLERANCE_UNITS = 1
 const ROTATION_STEP = 7.5
+const OVAL_CURVES_PER_END = 6
+const PLACEMENT_GRID_STEPS = 5
 const NO_CONNECTIONS = new Set<number>()
 
 const uid = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`
@@ -288,9 +290,9 @@ const generateAutomaticLayout = (
       sequence.push({ definitionId: 'g600', trackClass: 'main' })
     }
   }
-  for (let index = 0; index < 6; index += 1) sequence.push({ definitionId: 'r1', trackClass: 'main' })
+  for (let index = 0; index < OVAL_CURVES_PER_END; index += 1) sequence.push({ definitionId: 'r1', trackClass: 'main' })
   for (let index = 0; index < straightSections; index += 1) sequence.push({ definitionId: 'g600', trackClass: 'main' })
-  for (let index = 0; index < 6; index += 1) sequence.push({ definitionId: 'r1', trackClass: 'main' })
+  for (let index = 0; index < OVAL_CURVES_PER_END; index += 1) sequence.push({ definitionId: 'r1', trackClass: 'main' })
 
   const generated: PlacedTrack[] = []
   const switches: { track: PlacedTrack; trackClass: TrackClass }[] = []
@@ -360,10 +362,10 @@ const generateAutomaticLayout = (
   }
 
   let best = { x: margin - minX + availableX / 2, y: margin - minY + availableY / 2, conflicts: Infinity }
-  for (let column = 0; column < 5; column += 1) {
-    for (let row = 0; row < 5; row += 1) {
-      const x = margin - minX + availableX * column / 4
-      const y = margin - minY + availableY * row / 4
+  for (let column = 0; column < PLACEMENT_GRID_STEPS; column += 1) {
+    for (let row = 0; row < PLACEMENT_GRID_STEPS; row += 1) {
+      const x = margin - minX + availableX * column / (PLACEMENT_GRID_STEPS - 1)
+      const y = margin - minY + availableY * row / (PLACEMENT_GRID_STEPS - 1)
       const conflicts = generated.reduce((sum, track) => sum + terrain.filter((patch) =>
         distance({ x: track.x + x, y: track.y + y }, patch) < (patch.kind === 'building' ? 100 : 80)).length, 0)
       if (conflicts < best.conflicts) best = { x, y, conflicts }
@@ -490,6 +492,7 @@ function App() {
   const [plannerOpen, setPlannerOpen] = useState(false)
   const [plannerOptions, setPlannerOptions] = useState<PlannerOptions>({ straightSections: 3, sidings: 1, stationTracks: 1 })
   const [plannerMessage, setPlannerMessage] = useState('')
+  const [plannerNotice, setPlannerNotice] = useState('')
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [projectName, setProjectName] = useState('Meine Gartenbahn')
   const [canvasSize, setCanvasSize] = useState(loadCanvasSize)
@@ -531,6 +534,12 @@ function App() {
   useEffect(() => {
     localStorage.setItem('lgb-canvas', JSON.stringify(canvasSize))
   }, [canvasSize])
+
+  useEffect(() => {
+    if (!plannerNotice) return
+    const timeout = window.setTimeout(() => setPlannerNotice(''), 5000)
+    return () => window.clearTimeout(timeout)
+  }, [plannerNotice])
 
   const canvasPoint = (event: React.PointerEvent<SVGSVGElement>) => {
     return toCanvasPoint(event.currentTarget, event.clientX, event.clientY)
@@ -690,12 +699,15 @@ function App() {
   const createAutomaticPlan = () => {
     if (tracks.length > 0 && !window.confirm('Der automatische Plan ersetzt die aktuell verlegten Gleise. Fortfahren?')) return
     const result = generateAutomaticLayout(plannerOptions, canvasSize, terrain, inventory)
-    setPlannerMessage(result.message)
-    if (!result.tracks.length) return
+    if (!result.tracks.length) {
+      setPlannerMessage(result.message)
+      return
+    }
     setTracks(result.tracks)
     setSelectedId(null)
+    setPlannerNotice(result.message)
+    setPlannerMessage('')
     setPlannerOpen(false)
-    window.alert(result.message)
   }
 
   const exportProject = () => {
@@ -922,7 +934,7 @@ function App() {
               )}
             </svg>
             <div className="scale"><span style={{ width: `${UNITS_PER_METER * zoom / 100}px` }} /> 1 m</div>
-            <div className="status-pill">{tracks.length} Gleise · {terrain.length} Geländeelemente</div>
+            <div className="status-pill">{plannerNotice || `${tracks.length} Gleise · ${terrain.length} Geländeelemente`}</div>
           </div>
 
           <div className="bottom-tools">
