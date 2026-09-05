@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import './App.css'
 
 type TrackKind = 'straight' | 'curve' | 'switch-left' | 'switch-right' | 'switch-three' | 'crossing' | 'buffer' | 'special'
@@ -693,6 +693,9 @@ function App() {
   }
 
   const selected = tracks.find((item) => item.id === selectedId)
+  const selectedCanvasX = selected ? selected.x * zoom / 100 : 0
+  const selectionPanelMargin = Math.min(250, canvasWidth * zoom / 200)
+  const selectionPanelLeft = clamp(selectedCanvasX, selectionPanelMargin, canvasWidth * zoom / 100 - selectionPanelMargin)
   const filteredTracks = TRACKS.filter((item) => {
     const matchesCategory =
       catalogFilter === 'track' ? item.kind === 'straight' || item.kind === 'curve'
@@ -986,12 +989,13 @@ function App() {
             <div className="status-pill">{plannerNotice || `${tracks.length} Gleise · ${terrain.length} Geländeelemente`}</div>
             {selected && (
               <div
-                className="selection-panel"
+                className={`selection-panel ${selected.y * zoom / 100 < 90 ? 'below' : ''}`}
                 data-track={selected.id}
                 style={{
-                  left: `${selected.x * zoom / 100}px`,
+                  left: `${selectionPanelLeft}px`,
                   top: `${selected.y * zoom / 100}px`,
-                }}
+                  '--menu-pointer-offset': `${selectedCanvasX - selectionPanelLeft}px`,
+                } as CSSProperties}
               >
                 <div><small>Auswahl</small><strong>{TRACKS.find((item) => item.id === selected.definitionId)?.name}</strong></div>
                 <button aria-label="Gleis nach links drehen" onClick={() => updateSelected({ rotation: normalizeAngle(selected.rotation - ROTATION_STEP) })}>↶ <span>Links drehen</span></button>

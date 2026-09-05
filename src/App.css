@@ -151,9 +151,11 @@ select { border: 1px solid #d8d9d3; border-radius: 7px; background: white; paddi
   border: 1px solid #d7d8d1; background: #fffef9ee; backdrop-filter: blur(10px); border-radius: 11px; box-shadow: 0 8px 25px #24362d23;
 }
 .selection-panel::after {
-  content: ''; position: absolute; left: 50%; bottom: -8px; width: 14px; height: 14px;
-  border-right: 1px solid #d7d8d1; border-bottom: 1px solid #d7d8d1; background: #fffef9; transform: translateX(-50%) rotate(45deg);
+  content: ''; position: absolute; left: clamp(16px, calc(50% + var(--menu-pointer-offset)), calc(100% - 16px)); bottom: -8px; width: 14px; height: 14px;
+  border-right: 1px solid #d7d8d1; border-bottom: 1px solid #d7d8d1; background: #fffef9ee; transform: translateX(-50%) rotate(45deg);
 }
+.selection-panel.below { transform: translate(-50%, 18px); }
+.selection-panel.below::after { top: -8px; bottom: auto; border: 1px solid #d7d8d1; border-right: 0; border-bottom: 0; }
 .selection-panel > div { padding: 0 8px 0 3px; min-width: 105px; }
 .selection-panel > div strong, .selection-panel > div small { display: block; font-size: 10px; }
 .selection-panel > button { height: 38px; border: 1px solid #dddcd4; background: white; border-radius: 7px; font-size: 13px; }
