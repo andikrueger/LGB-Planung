@@ -49,6 +49,7 @@ type PhotoLayer = {
   scale: number
   rotation: number
   opacity: number
+  aspectRatio: number
 }
 
 type TrackInventory = Record<string, number>
@@ -451,6 +452,7 @@ const normalizePhoto = (value: unknown): PhotoLayer | null => {
     scale: clamp(Number(photo.scale) || 100, 25, 300),
     rotation: clamp(Number(photo.rotation) || 0, -180, 180),
     opacity: clamp(Number(photo.opacity) || 65, 10, 100),
+    aspectRatio: clamp(Number(photo.aspectRatio) || DEFAULT_CANVAS.widthMeters / DEFAULT_CANVAS.heightMeters, .1, 10),
   }
 }
 
@@ -472,7 +474,7 @@ const persistPhoto = (photo: PhotoLayer | null) => {
   }
 }
 
-const preparePhoto = (file: File) => new Promise<string>((resolve, reject) => {
+const preparePhoto = (file: File) => new Promise<{ dataUrl: string; aspectRatio: number }>((resolve, reject) => {
   if (!SUPPORTED_PHOTO_TYPES.has(file.type)) {
     reject(new Error('Bitte ein Foto im Format JPEG, PNG oder WebP auswählen.'))
     return
@@ -502,7 +504,10 @@ const preparePhoto = (file: File) => new Promise<string>((resolve, reject) => {
         context.fillRect(0, 0, canvas.width, canvas.height)
       }
       context.drawImage(image, 0, 0, canvas.width, canvas.height)
-      resolve(canvas.toDataURL(file.type, .82))
+      const dataUrl = file.type === 'image/png'
+        ? canvas.toDataURL('image/png')
+        : canvas.toDataURL(file.type, .82)
+      resolve({ dataUrl, aspectRatio: canvas.width / canvas.height })
     }
     image.src = String(reader.result)
   }
@@ -788,6 +793,11 @@ function App() {
     return matchesCategory && (!query || `${item.article} ${item.name} ${item.detail}`.toLocaleLowerCase('de').includes(query))
   })
 
+  const applyPhoto = (nextPhoto: PhotoLayer | null) => {
+    setPhotoStorageWarning(!persistPhoto(nextPhoto))
+    setPhoto(nextPhoto)
+  }
+
   const resetProject = () => {
     if ((tracks.length + terrain.length > 0 || photo) && !window.confirm('Den aktuellen Plan wirklich leeren?')) return
     setTracks([])
@@ -797,18 +807,13 @@ function App() {
     setSelectedId(null)
   }
 
-  const applyPhoto = (nextPhoto: PhotoLayer | null) => {
-    setPhotoStorageWarning(!persistPhoto(nextPhoto))
-    setPhoto(nextPhoto)
-  }
-
   const importPhoto = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     event.target.value = ''
     if (!file) return
     try {
-      const dataUrl = await preparePhoto(file)
-      applyPhoto({ dataUrl, name: file.name, ...DEFAULT_PHOTO_ALIGNMENT })
+      const prepared = await preparePhoto(file)
+      applyPhoto({ ...prepared, name: file.name, ...DEFAULT_PHOTO_ALIGNMENT })
       setPhotoPanelOpen(true)
     } catch (error) {
       window.alert(error instanceof Error ? error.message : 'Das Foto konnte nicht verarbeitet werden.')
@@ -1077,7 +1082,7 @@ function App() {
               <rect width={canvasWidth} height={canvasHeight} className="canvas-ground" />
               {photo && (() => {
                 const width = canvasWidth * photo.scale / 100
-                const height = canvasHeight * photo.scale / 100
+                const height = width / photo.aspectRatio
                 const x = (canvasWidth - width) / 2 + photo.offsetX * UNITS_PER_METER
                 const y = (canvasHeight - height) / 2 + photo.offsetY * UNITS_PER_METER
                 return (
