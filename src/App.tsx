@@ -499,14 +499,14 @@ const preparePhoto = (file: File) => new Promise<{ dataUrl: string; aspectRatio:
         reject(new Error('Das Foto konnte nicht verarbeitet werden.'))
         return
       }
-      if (file.type === 'image/jpeg') {
+      if (file.type !== 'image/png') {
         context.fillStyle = '#fff'
         context.fillRect(0, 0, canvas.width, canvas.height)
       }
       context.drawImage(image, 0, 0, canvas.width, canvas.height)
       const dataUrl = file.type === 'image/png'
         ? canvas.toDataURL('image/png')
-        : canvas.toDataURL(file.type, .82)
+        : canvas.toDataURL('image/jpeg', .82)
       resolve({ dataUrl, aspectRatio: canvas.width / canvas.height })
     }
     image.src = String(reader.result)
@@ -606,6 +606,7 @@ function App() {
   const zoomFrameRef = useRef<number | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const photoFileRef = useRef<HTMLInputElement>(null)
+  const cameraFileRef = useRef<HTMLInputElement>(null)
   const plannerButtonRef = useRef<HTMLButtonElement>(null)
   const plannerModalRef = useRef<HTMLElement>(null)
   const canvasWidth = canvasSize.widthMeters * UNITS_PER_METER
@@ -1027,7 +1028,9 @@ function App() {
             >
               ▧ {photo ? 'Foto ausrichten' : 'Gartenfoto'}
             </button>
-            <input ref={photoFileRef} type="file" accept="image/jpeg,image/png,image/webp" capture="environment" hidden onChange={importPhoto} />
+            <button className="camera-button" onClick={() => cameraFileRef.current?.click()}>◎ Kamera</button>
+            <input ref={photoFileRef} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={importPhoto} />
+            <input ref={cameraFileRef} type="file" accept="image/*" capture="environment" hidden onChange={importPhoto} />
             <div className="mode-switch">
               <button className={environment === 'outdoor' ? 'active' : ''} onClick={() => setEnvironment('outdoor')}>☀ Outdoor</button>
               <button className={environment === 'indoor' ? 'active' : ''} onClick={() => setEnvironment('indoor')}>⌂ Indoor</button>
@@ -1143,6 +1146,7 @@ function App() {
                 <div className="photo-actions">
                   <button onClick={() => updatePhoto(DEFAULT_PHOTO_ALIGNMENT)}>Zurücksetzen</button>
                   <button onClick={() => photoFileRef.current?.click()}>Foto ersetzen</button>
+                  <button onClick={() => cameraFileRef.current?.click()}>Neu aufnehmen</button>
                   <button className="remove-photo" onClick={() => { applyPhoto(null); setPhotoPanelOpen(false) }}>Entfernen</button>
                 </div>
               </section>
