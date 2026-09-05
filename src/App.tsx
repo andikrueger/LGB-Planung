@@ -987,7 +987,7 @@ function App() {
             {selected && (
               <div
                 className="selection-panel"
-                data-track=""
+                data-track={selected.id}
                 style={{
                   left: `${selected.x * zoom / 100}px`,
                   top: `${selected.y * zoom / 100}px`,
