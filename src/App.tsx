@@ -543,7 +543,11 @@ function App() {
     syncViewport()
     const observer = new ResizeObserver(syncViewport)
     observer.observe(wrap)
-    return () => observer.disconnect()
+    window.addEventListener('resize', syncViewport)
+    return () => {
+      observer.disconnect()
+      window.removeEventListener('resize', syncViewport)
+    }
   }, [])
 
   useEffect(() => {
@@ -718,6 +722,8 @@ function App() {
   const selectionPanelLeft = clamp(selectedViewportX, selectionPanelMargin, canvasViewport.width - selectionPanelMargin)
   const selectionPanelVisible = selectedViewportX >= 0 && selectedViewportX <= canvasViewport.width
     && selectedViewportY >= 0 && selectedViewportY <= canvasViewport.height
+  const selectionPanelBelow = selectedViewportY < SELECTION_PANEL_EDGE_THRESHOLD
+    && canvasViewport.height - selectedViewportY >= SELECTION_PANEL_EDGE_THRESHOLD
   const filteredTracks = TRACKS.filter((item) => {
     const matchesCategory =
       catalogFilter === 'track' ? item.kind === 'straight' || item.kind === 'curve'
@@ -1017,7 +1023,7 @@ function App() {
 
           {selected && selectionPanelVisible && (
             <div
-              className={`selection-panel ${selectedViewportY < SELECTION_PANEL_EDGE_THRESHOLD ? 'below' : ''}`}
+              className={`selection-panel ${selectionPanelBelow ? 'below' : ''}`}
               data-track={selected.id}
               style={{
                 left: `${selectionPanelLeft}px`,
