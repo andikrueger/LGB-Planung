@@ -134,6 +134,7 @@ const ROTATION_STEP = 7.5
 const OVAL_CURVES_PER_END = 6
 const PLACEMENT_GRID_STEPS = 5
 const NO_CONNECTIONS = new Set<number>()
+const DEFAULT_PHOTO_NAME = 'Gartenfoto'
 const DEFAULT_PHOTO_ALIGNMENT = { offsetX: 0, offsetY: 0, scale: 100, rotation: 0, opacity: 65 }
 const MAX_PHOTO_BYTES = 20 * 1024 * 1024
 const MAX_PHOTO_EDGE = 2048
@@ -444,7 +445,7 @@ const normalizePhoto = (value: unknown): PhotoLayer | null => {
   if (typeof photo.dataUrl !== 'string' || !/^data:image\/(?:jpeg|png|webp);base64,/i.test(photo.dataUrl)) return null
   return {
     dataUrl: photo.dataUrl,
-    name: typeof photo.name === 'string' ? photo.name : 'Gartenfoto',
+    name: typeof photo.name === 'string' ? photo.name : DEFAULT_PHOTO_NAME,
     offsetX: clamp(Number(photo.offsetX) || 0, -100, 100),
     offsetY: clamp(Number(photo.offsetY) || 0, -100, 100),
     scale: clamp(Number(photo.scale) || 100, 25, 300),
@@ -880,8 +881,9 @@ function App() {
         setProjectName(data.projectName || 'Importierter Plan')
         setEnvironment(data.environment === 'indoor' ? 'indoor' : 'outdoor')
         if (data.inventory !== undefined) setInventory(normalizeInventory(data.inventory))
-        setPhoto(normalizePhoto(data.photo))
-        setPhotoPanelOpen(Boolean(normalizePhoto(data.photo)))
+        const importedPhoto = normalizePhoto(data.photo)
+        setPhoto(importedPhoto)
+        setPhotoPanelOpen(Boolean(importedPhoto))
         const importedCanvasSize = normalizeCanvasSize(data.canvas)
         setCanvasSize(importedCanvasSize)
         setCanvasInputs({
