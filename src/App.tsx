@@ -506,6 +506,7 @@ function App() {
     heightMeters: String(canvasSize.heightMeters),
   }))
   const [zoom, setZoom] = useState(100)
+  const [canvasViewport, setCanvasViewport] = useState({ scrollLeft: 0, scrollTop: 0, width: 0, height: 0, offsetTop: 0 })
   const dragRef = useRef<{ id: string; dx: number; dy: number } | null>(null)
   const canvasWrapRef = useRef<HTMLDivElement>(null)
   const touchPointersRef = useRef(new Map<number, { x: number; y: number; startX: number; startY: number; moved: boolean; startedOnTrack: boolean }>())
@@ -528,6 +529,22 @@ function App() {
   }, {}), [tracks])
   const inventoryShortages = useMemo(() => TRACKS.filter((track) =>
     track.id in inventory && (usedInventory[track.id] ?? 0) > inventory[track.id]), [inventory, usedInventory])
+
+  useEffect(() => {
+    const wrap = canvasWrapRef.current
+    if (!wrap) return
+    const syncViewport = () => setCanvasViewport({
+      scrollLeft: wrap.scrollLeft,
+      scrollTop: wrap.scrollTop,
+      width: wrap.clientWidth,
+      height: wrap.clientHeight,
+      offsetTop: wrap.offsetTop,
+    })
+    syncViewport()
+    const observer = new ResizeObserver(syncViewport)
+    observer.observe(wrap)
+    return () => observer.disconnect()
+  }, [])
 
   useEffect(() => {
     localStorage.setItem('lgb-tracks', JSON.stringify(tracks))
@@ -695,8 +712,12 @@ function App() {
 
   const selected = tracks.find((item) => item.id === selectedId)
   const selectedCanvasX = selected ? selected.x * zoom / 100 : 0
-  const selectionPanelMargin = Math.min(250, canvasWidth * zoom / 200)
-  const selectionPanelLeft = clamp(selectedCanvasX, selectionPanelMargin, canvasWidth * zoom / 100 - selectionPanelMargin)
+  const selectedViewportX = selectedCanvasX - canvasViewport.scrollLeft
+  const selectedViewportY = selected ? selected.y * zoom / 100 - canvasViewport.scrollTop : 0
+  const selectionPanelMargin = Math.min(250, canvasViewport.width / 2)
+  const selectionPanelLeft = clamp(selectedViewportX, selectionPanelMargin, canvasViewport.width - selectionPanelMargin)
+  const selectionPanelVisible = selectedViewportX >= 0 && selectedViewportX <= canvasViewport.width
+    && selectedViewportY >= 0 && selectedViewportY <= canvasViewport.height
   const filteredTracks = TRACKS.filter((item) => {
     const matchesCategory =
       catalogFilter === 'track' ? item.kind === 'straight' || item.kind === 'curve'
@@ -937,7 +958,11 @@ function App() {
             </div>
           </div>
 
-          <div className="canvas-wrap" ref={canvasWrapRef}>
+          <div className="canvas-wrap" ref={canvasWrapRef} onScroll={(event) => setCanvasViewport((viewport) => ({
+            ...viewport,
+            scrollLeft: event.currentTarget.scrollLeft,
+            scrollTop: event.currentTarget.scrollTop,
+          }))}>
             <svg
               className={`layout-canvas ${environment}`}
               viewBox={`0 0 ${canvasWidth} ${canvasHeight}`}
@@ -988,25 +1013,26 @@ function App() {
             </svg>
             <div className="scale"><span style={{ width: `${UNITS_PER_METER * zoom / 100}px` }} /> 1 m</div>
             <div className="status-pill">{plannerNotice || `${tracks.length} Gleise · ${terrain.length} Geländeelemente`}</div>
-            {selected && (
-              <div
-                className={`selection-panel ${selected.y * zoom / 100 < SELECTION_PANEL_EDGE_THRESHOLD ? 'below' : ''}`}
-                data-track={selected.id}
-                style={{
-                  left: `${selectionPanelLeft}px`,
-                  top: `${selected.y * zoom / 100}px`,
-                  '--menu-pointer-offset': `${selectedCanvasX - selectionPanelLeft}px`,
-                } as CSSProperties}
-              >
-                <div><small>Auswahl</small><strong>{TRACKS.find((item) => item.id === selected.definitionId)?.name}</strong></div>
-                <button aria-label="Gleis nach links drehen" onClick={() => updateSelected({ rotation: normalizeAngle(selected.rotation - ROTATION_STEP) })}>↶ <span>Links drehen</span></button>
-                <button aria-label="Gleis nach rechts drehen" onClick={() => updateSelected({ rotation: normalizeAngle(selected.rotation + ROTATION_STEP) })}>↷ <span>Rechts drehen</span></button>
-                <label><span>Stromkreis</span><select value={selected.circuit} onChange={(event) => updateSelected({ circuit: event.target.value })}>{CIRCUITS.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
-                <label><span>Kennzeichnung</span><select value={selected.trackClass} onChange={(event) => updateSelected({ trackClass: event.target.value as TrackClass })}><option value="main">Hauptstrecke</option><option value="siding">Abstellgleis</option><option value="station">Bahnhofsgleis</option></select></label>
-                <button className="delete-button" aria-label="Gleis löschen" onClick={() => { setTracks((items) => items.filter((item) => item.id !== selected.id)); setSelectedId(null) }}>⌫ <span>Löschen</span></button>
-              </div>
-            )}
           </div>
+
+          {selected && selectionPanelVisible && (
+            <div
+              className={`selection-panel ${selectedViewportY < SELECTION_PANEL_EDGE_THRESHOLD ? 'below' : ''}`}
+              data-track={selected.id}
+              style={{
+                left: `${selectionPanelLeft}px`,
+                top: `${canvasViewport.offsetTop + selectedViewportY}px`,
+                '--menu-pointer-offset': `${selectedViewportX - selectionPanelLeft}px`,
+              } as CSSProperties}
+            >
+              <div><small>Auswahl</small><strong>{TRACKS.find((item) => item.id === selected.definitionId)?.name}</strong></div>
+              <button aria-label="Gleis nach links drehen" onClick={() => updateSelected({ rotation: normalizeAngle(selected.rotation - ROTATION_STEP) })}>↶ <span>Links drehen</span></button>
+              <button aria-label="Gleis nach rechts drehen" onClick={() => updateSelected({ rotation: normalizeAngle(selected.rotation + ROTATION_STEP) })}>↷ <span>Rechts drehen</span></button>
+              <label><span>Stromkreis</span><select value={selected.circuit} onChange={(event) => updateSelected({ circuit: event.target.value })}>{CIRCUITS.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+              <label><span>Kennzeichnung</span><select value={selected.trackClass} onChange={(event) => updateSelected({ trackClass: event.target.value as TrackClass })}><option value="main">Hauptstrecke</option><option value="siding">Abstellgleis</option><option value="station">Bahnhofsgleis</option></select></label>
+              <button className="delete-button" aria-label="Gleis löschen" onClick={() => { setTracks((items) => items.filter((item) => item.id !== selected.id)); setSelectedId(null) }}>⌫ <span>Löschen</span></button>
+            </div>
+          )}
 
           <div className="bottom-tools">
             <div className="terrain-tools">
