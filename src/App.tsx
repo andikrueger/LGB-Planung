@@ -462,6 +462,16 @@ const loadPhoto = () => {
   }
 }
 
+const persistPhoto = (photo: PhotoLayer | null) => {
+  try {
+    if (photo) localStorage.setItem('lgb-photo', JSON.stringify(photo))
+    else localStorage.removeItem('lgb-photo')
+    return true
+  } catch {
+    return false
+  }
+}
+
 const preparePhoto = (file: File) => new Promise<string>((resolve, reject) => {
   if (!SUPPORTED_PHOTO_TYPES.has(file.type)) {
     reject(new Error('Bitte ein Foto im Format JPEG, PNG oder WebP auswählen.'))
@@ -487,8 +497,12 @@ const preparePhoto = (file: File) => new Promise<string>((resolve, reject) => {
         reject(new Error('Das Foto konnte nicht verarbeitet werden.'))
         return
       }
+      if (file.type === 'image/jpeg') {
+        context.fillStyle = '#fff'
+        context.fillRect(0, 0, canvas.width, canvas.height)
+      }
       context.drawImage(image, 0, 0, canvas.width, canvas.height)
-      resolve(canvas.toDataURL('image/jpeg', .82))
+      resolve(canvas.toDataURL(file.type, .82))
     }
     image.src = String(reader.result)
   }
@@ -577,6 +591,7 @@ function App() {
   }))
   const [photo, setPhoto] = useState<PhotoLayer | null>(loadPhoto)
   const [photoPanelOpen, setPhotoPanelOpen] = useState(false)
+  const [photoStorageWarning, setPhotoStorageWarning] = useState(false)
   const [zoom, setZoom] = useState(100)
   const dragRef = useRef<{ id: string; dx: number; dy: number } | null>(null)
   const canvasWrapRef = useRef<HTMLDivElement>(null)
@@ -614,13 +629,6 @@ function App() {
   useEffect(() => {
     localStorage.setItem('lgb-canvas', JSON.stringify(canvasSize))
   }, [canvasSize])
-
-  useEffect(() => {
-    try {
-      if (photo) localStorage.setItem('lgb-photo', JSON.stringify(photo))
-      else localStorage.removeItem('lgb-photo')
-    } catch {}
-  }, [photo])
 
   useEffect(() => {
     if (!plannerNotice) return
@@ -784,9 +792,14 @@ function App() {
     if ((tracks.length + terrain.length > 0 || photo) && !window.confirm('Den aktuellen Plan wirklich leeren?')) return
     setTracks([])
     setTerrain([])
-    setPhoto(null)
+    applyPhoto(null)
     setPhotoPanelOpen(false)
     setSelectedId(null)
+  }
+
+  const applyPhoto = (nextPhoto: PhotoLayer | null) => {
+    setPhotoStorageWarning(!persistPhoto(nextPhoto))
+    setPhoto(nextPhoto)
   }
 
   const importPhoto = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -795,7 +808,7 @@ function App() {
     if (!file) return
     try {
       const dataUrl = await preparePhoto(file)
-      setPhoto({ dataUrl, name: file.name, ...DEFAULT_PHOTO_ALIGNMENT })
+      applyPhoto({ dataUrl, name: file.name, ...DEFAULT_PHOTO_ALIGNMENT })
       setPhotoPanelOpen(true)
     } catch (error) {
       window.alert(error instanceof Error ? error.message : 'Das Foto konnte nicht verarbeitet werden.')
@@ -803,7 +816,7 @@ function App() {
   }
 
   const updatePhoto = (change: Partial<PhotoLayer>) => {
-    setPhoto((current) => current ? { ...current, ...change } : null)
+    if (photo) applyPhoto({ ...photo, ...change })
   }
 
   const createAutomaticPlan = () => {
@@ -882,7 +895,7 @@ function App() {
         setEnvironment(data.environment === 'indoor' ? 'indoor' : 'outdoor')
         if (data.inventory !== undefined) setInventory(normalizeInventory(data.inventory))
         const importedPhoto = normalizePhoto(data.photo)
-        setPhoto(importedPhoto)
+        applyPhoto(importedPhoto)
         setPhotoPanelOpen(Boolean(importedPhoto))
         const importedCanvasSize = normalizeCanvasSize(data.canvas)
         setCanvasSize(importedCanvasSize)
@@ -1075,7 +1088,7 @@ function App() {
                     width={width}
                     height={height}
                     opacity={photo.opacity / 100}
-                    preserveAspectRatio="xMidYMid slice"
+                    preserveAspectRatio="xMidYMid meet"
                     transform={`rotate(${photo.rotation} ${x + width / 2} ${y + height / 2})`}
                     className="photo-layer"
                   />
@@ -1108,7 +1121,7 @@ function App() {
               )}
             </svg>
             <div className="scale"><span style={{ width: `${UNITS_PER_METER * zoom / 100}px` }} /> 1 m</div>
-            <div className="status-pill">{plannerNotice || `${tracks.length} Gleise · ${terrain.length} Geländeelemente`}</div>
+            <div className="status-pill">{photoStorageWarning ? 'Foto ist zu groß für die automatische Speicherung' : plannerNotice || `${tracks.length} Gleise · ${terrain.length} Geländeelemente`}</div>
             {photo && photoPanelOpen && (
               <section className="photo-panel" aria-label="Gartenfoto ausrichten">
                 <div className="photo-panel-heading">
@@ -1125,7 +1138,7 @@ function App() {
                 <div className="photo-actions">
                   <button onClick={() => updatePhoto(DEFAULT_PHOTO_ALIGNMENT)}>Zurücksetzen</button>
                   <button onClick={() => photoFileRef.current?.click()}>Foto ersetzen</button>
-                  <button className="remove-photo" onClick={() => { setPhoto(null); setPhotoPanelOpen(false) }}>Entfernen</button>
+                  <button className="remove-photo" onClick={() => { applyPhoto(null); setPhotoPanelOpen(false) }}>Entfernen</button>
                 </div>
               </section>
             )}
